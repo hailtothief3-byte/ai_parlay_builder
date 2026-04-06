@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: ai-parlay-builder
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.address 0.0.0.0 --server.port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: SQLITE_PATH
+        value: /var/data/parlay_builder.db
+      - key: SPORTSGAMEODDS_API_KEY
+        sync: false
+      - key: ODDS_API_KEY
+        sync: false
+      - key: BALLDONTLIE_API_KEY
+        sync: false
+      - key: PANDASCORE_API_KEY
+        sync: false
+      - key: ABIOS_API_KEY
+        sync: false
+    disk:
+      name: ai-parlay-builder-data
+      mountPath: /var/data
+      sizeGB: 5

@@ -1,0 +1,9 @@
+.env
+.env.*
+parlay_builder.db
+__pycache__/
+*.pyc
+data/sync_state.json
+data/sportsgameodds_event_sample.json
+data/sportsgameodds_nba_exotics_debug.json
+.DS_Store
