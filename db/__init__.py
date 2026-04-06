@@ -1,4 +1,4 @@
-from db.models import BankrollJournalEntry, Event, MarketLine, PlayerStatSnapshot, PropProjection, PropResult, SavedTicket, SavedTicketLeg, TrackedPick
+from db.models import AppState, BankrollJournalEntry, Event, MarketLine, PlayerStatSnapshot, PropProjection, PropResult, SavedTicket, SavedTicketLeg, TrackedPick
 from db.session import Base, engine
 
 
@@ -17,5 +17,6 @@ __all__ = [
     "SavedTicketLeg",
     "PlayerStatSnapshot",
     "BankrollJournalEntry",
+    "AppState",
     "init_db",
 ]

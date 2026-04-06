@@ -223,3 +223,21 @@ class BankrollJournalEntry(Base):
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, index=True, nullable=False)
     resolved_at = Column(DateTime, index=True, nullable=True)
+
+
+class AppState(Base):
+    __tablename__ = "app_state"
+
+    id = Column(Integer, primary_key=True)
+    namespace = Column(String, index=True, nullable=False)
+    state_key = Column(String, index=True, nullable=False)
+    value_json = Column(Text, nullable=False)
+    updated_at = Column(DateTime, index=True, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "namespace",
+            "state_key",
+            name="uq_app_state_namespace_key",
+        ),
+    )

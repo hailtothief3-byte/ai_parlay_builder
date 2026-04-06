@@ -7,6 +7,23 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+try:
+    import streamlit as st  # type: ignore
+except Exception:  # pragma: no cover - streamlit may not be available in non-app contexts
+    st = None
+
+
+def _get_secret(name: str, default: str = "") -> str:
+    value = os.getenv(name)
+    if value not in (None, ""):
+        return value
+    try:
+        if st is not None and hasattr(st, "secrets") and name in st.secrets:
+            return str(st.secrets[name])
+    except Exception:
+        pass
+    return default
+
 
 @dataclass(frozen=True)
 class AppConfig:
@@ -43,14 +60,14 @@ class AppConfig:
         return bool(self.odds_api_key.strip())
 
 CONFIG = AppConfig(
-    odds_api_key=os.getenv("ODDS_API_KEY", ""),
-    sportsgameodds_api_key=os.getenv("SPORTSGAMEODDS_API_KEY", ""),
-    sportsgameodds_api_base=os.getenv("SPORTSGAMEODDS_API_BASE", "https://api.sportsgameodds.com/v2"),
-    balldontlie_api_key=os.getenv("BALLDONTLIE_API_KEY", ""),
-    balldontlie_api_base=os.getenv("BALLDONTLIE_API_BASE", "https://api.balldontlie.io"),
-    esports_provider=os.getenv("ESPORTS_PROVIDER", "esports_placeholder"),
-    pandascore_api_key=os.getenv("PANDASCORE_API_KEY", ""),
-    abios_api_key=os.getenv("ABIOS_API_KEY", ""),
+    odds_api_key=_get_secret("ODDS_API_KEY", ""),
+    sportsgameodds_api_key=_get_secret("SPORTSGAMEODDS_API_KEY", ""),
+    sportsgameodds_api_base=_get_secret("SPORTSGAMEODDS_API_BASE", "https://api.sportsgameodds.com/v2"),
+    balldontlie_api_key=_get_secret("BALLDONTLIE_API_KEY", ""),
+    balldontlie_api_base=_get_secret("BALLDONTLIE_API_BASE", "https://api.balldontlie.io"),
+    esports_provider=_get_secret("ESPORTS_PROVIDER", "esports_placeholder"),
+    pandascore_api_key=_get_secret("PANDASCORE_API_KEY", ""),
+    abios_api_key=_get_secret("ABIOS_API_KEY", ""),
     sportsgameodds_min_monthly_entities_remaining=int(os.getenv("SPORTSGAMEODDS_MIN_MONTHLY_ENTITIES_REMAINING", "25000")),
     sportsgameodds_min_daily_entities_remaining=int(os.getenv("SPORTSGAMEODDS_MIN_DAILY_ENTITIES_REMAINING", "2500")),
     sportsgameodds_minute_request_buffer=int(os.getenv("SPORTSGAMEODDS_MINUTE_REQUEST_BUFFER", "3")),

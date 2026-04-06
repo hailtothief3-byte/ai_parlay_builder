@@ -90,6 +90,35 @@ Because this app currently uses SQLite, the persistent disk matters. If you late
 
 the next step would be moving from SQLite to Postgres.
 
+## Free deployment path
+If you want to avoid paid persistent disks, the recommended free-friendly path is:
+- host the app on Streamlit Community Cloud
+- use a free hosted Postgres database
+
+Why this works:
+- the app now supports `DATABASE_URL`
+- sync metadata no longer depends only on local JSON files
+- the app can read secrets from Streamlit secrets
+
+### Recommended stack
+- app host: Streamlit Community Cloud
+- database: a free hosted Postgres provider such as Neon or Supabase
+
+### Setup summary
+1. Create a free Postgres database.
+2. Copy its connection string.
+3. In Streamlit Community Cloud, deploy this GitHub repo.
+4. In the app secrets, add:
+   - `DATABASE_URL`
+   - `SPORTSGAMEODDS_API_KEY`
+   - optional other API keys
+
+Use [`.streamlit/secrets.example.toml`](/C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/.streamlit/secrets.example.toml) as your template.
+
+### Important note
+Debug files and local sample files can still be ephemeral in free hosting. That is okay.
+The important persistence is now the database.
+
 ## Publish to GitHub
 Before pushing this repo:
 - keep `.env` private
