@@ -602,6 +602,14 @@ def annotate_player_display(df: pd.DataFrame) -> pd.DataFrame:
     return annotated
 
 
+def prefer_player_display(df: pd.DataFrame, target_column: str = "player") -> pd.DataFrame:
+    if df.empty or "player_display" not in df.columns:
+        return df
+    preferred = df.copy()
+    preferred[target_column] = preferred["player_display"]
+    return preferred
+
+
 def build_watchlist_option_labels(df: pd.DataFrame) -> dict[str, int]:
     option_labels = {}
     for idx, row in df.iterrows():
@@ -1399,9 +1407,7 @@ with tab1:
             render_empty_state("No rows match this board view", "Try relaxing the filters or showing demo-only/provider-unavailable markets.", tone="info")
         else:
             display_board["watchlist"] = display_board["is_watchlisted"].map(lambda value: "Yes" if value else "")
-            board_display = display_board.copy()
-            if "player_display" in board_display.columns:
-                board_display = board_display.rename(columns={"player_display": "player_label"})
+            board_display = prefer_player_display(display_board.copy())
             st.dataframe(style_signal_table(compact_numeric_table(board_display)), use_container_width=True)
             st.download_button(
                 "Export Live Board CSV",
@@ -1487,9 +1493,7 @@ with tab2:
             render_empty_state("No rows match this edge view", "Try relaxing the filters, thresholds, or watchlist-only alert view.", tone="info")
         else:
             display_edges["watchlist"] = display_edges["is_watchlisted"].map(lambda value: "Yes" if value else "")
-            edge_display = display_edges.copy()
-            if "player_display" in edge_display.columns:
-                edge_display = edge_display.rename(columns={"player_display": "player_label"})
+            edge_display = prefer_player_display(display_edges.copy())
             st.dataframe(style_signal_table(compact_numeric_table(edge_display)), use_container_width=True)
             st.download_button(
                 "Export Edge Scanner CSV",
@@ -1611,14 +1615,12 @@ with tab3:
                     f"Estimated parlay decimal odds: {parlay_stake_plan['parlay_decimal_odds']}."
                 )
                 parlay_df.insert(0, "leg_rank", range(1, len(parlay_df) + 1))
-                parlay_display = annotate_player_display(parlay_df)
-                if "player_display" in parlay_display.columns:
-                    parlay_display = parlay_display.rename(columns={"player_display": "player_label"})
+                parlay_display = prefer_player_display(annotate_player_display(parlay_df))
                 st.dataframe(
                     style_coverage_table(compact_numeric_table(parlay_display[
                         [
                             "leg_rank",
-                            "player_label",
+                            "player",
                             "player_team",
                             "market",
                             "pick",
@@ -1685,9 +1687,7 @@ with tab3:
         if parlay.empty:
             render_empty_state("No demo parlay met the filters", "Adjust the demo confidence, leg count, or style to widen the candidate pool.", tone="warning")
         else:
-            demo_parlay_display = annotate_player_display(parlay)
-            if "player_display" in demo_parlay_display.columns:
-                demo_parlay_display = demo_parlay_display.rename(columns={"player_display": "player_label"})
+            demo_parlay_display = prefer_player_display(annotate_player_display(parlay))
             st.dataframe(compact_numeric_table(demo_parlay_display), use_container_width=True)
             if st.button("Save Demo Ticket", use_container_width=True):
                 ticket_id = save_ticket(
@@ -2165,18 +2165,23 @@ with tab5:
 
                     if not current_benchmark.empty:
                         st.markdown("##### Current Top Model Legs")
-                        benchmark_display = current_benchmark[
+                        benchmark_display = prefer_player_display(annotate_player_display(current_benchmark))
+                        benchmark_display = benchmark_display[
                             [
-                                "player",
-                                "market",
-                                "pick",
-                                "sportsbook",
-                                "line",
-                                "model_prob",
-                                "edge",
-                                "confidence",
-                                "recommended_units",
-                                "recommended_stake",
+                                col for col in [
+                                    "player",
+                                    "player_team",
+                                    "market",
+                                    "pick",
+                                    "sportsbook",
+                                    "line",
+                                    "model_prob",
+                                    "edge",
+                                    "confidence",
+                                    "recommended_units",
+                                    "recommended_stake",
+                                ]
+                                if col in benchmark_display.columns
                             ]
                         ].copy()
                         benchmark_display["model_prob"] = (benchmark_display["model_prob"] * 100).round(2)
