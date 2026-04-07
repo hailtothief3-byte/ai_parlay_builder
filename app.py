@@ -1086,6 +1086,8 @@ parlay_view_session_key = f"parlay_view_mode_{sport_label}"
 demo_parlay_view_session_key = f"demo_parlay_view_mode_{sport_label}"
 show_non_live_board_session_key = f"show_non_live_board_{sport_label}"
 show_non_live_edges_session_key = f"show_non_live_edges_{sport_label}"
+history_player_suggestion_session_key = f"history_player_suggestion_{sport_label}"
+history_market_suggestion_session_key = f"history_market_suggestion_{sport_label}"
 board_market_filter_session_key = f"board_market_filter_{sport_label}"
 board_sort_by_session_key = f"board_sort_by_{sport_label}"
 board_sort_ascending_session_key = f"board_sort_ascending_{sport_label}"
@@ -1106,6 +1108,8 @@ sync_view_preference_state(sport_label, parlay_view_session_key, "parlay_view_mo
 sync_view_preference_state(sport_label, demo_parlay_view_session_key, "demo_parlay_view_mode", "Compact")
 sync_bool_view_preference_state(sport_label, show_non_live_board_session_key, "show_non_live_board", not sync_enabled)
 sync_bool_view_preference_state(sport_label, show_non_live_edges_session_key, "show_non_live_edges", False)
+sync_view_preference_state(sport_label, history_player_suggestion_session_key, "history_player_suggestion", "")
+sync_view_preference_state(sport_label, history_market_suggestion_session_key, "history_market_suggestion", "")
 sync_view_preference_state(sport_label, board_market_filter_session_key, "board_market_filter", "")
 sync_view_preference_state(sport_label, board_sort_by_session_key, "board_sort_by", "pulled_at")
 sync_bool_view_preference_state(sport_label, board_sort_ascending_session_key, "board_sort_ascending", False)
@@ -1217,6 +1221,8 @@ with st.expander("View Preferences", expanded=False):
     view_pref_col2.write(f"Parlay Source: `{get_view_preference(sport_label, 'parlay_source', 'Live edges')}`")
     view_pref_col2.write(f"Live Parlay Lab: `{get_view_preference(sport_label, 'parlay_view_mode', 'Compact')}`")
     view_pref_col2.write(f"Demo Parlay Lab: `{get_view_preference(sport_label, 'demo_parlay_view_mode', 'Compact')}`")
+    view_pref_col2.write(f"History Player Suggestion: `{get_view_preference(sport_label, 'history_player_suggestion', '') or 'None'}`")
+    view_pref_col2.write(f"History Market Suggestion: `{get_view_preference(sport_label, 'history_market_suggestion', '') or 'None'}`")
     view_pref_col2.write(f"Demo Legs: `{get_view_preference(sport_label, 'demo_legs', '3')}`")
     view_pref_col2.write(f"Demo Min Confidence: `{get_view_preference(sport_label, 'demo_min_confidence', '70')}`")
     view_pref_col2.write(f"Demo Style: `{get_view_preference(sport_label, 'demo_parlay_style', 'Safe')}`")
@@ -1232,6 +1238,8 @@ with st.expander("View Preferences", expanded=False):
         st.session_state[board_watchlist_only_session_key] = False
         st.session_state[edge_view_session_key] = "Compact"
         st.session_state[show_non_live_edges_session_key] = False
+        st.session_state[history_player_suggestion_session_key] = ""
+        st.session_state[history_market_suggestion_session_key] = ""
         st.session_state[edge_market_filter_session_key] = ""
         st.session_state[edge_sort_by_session_key] = "confidence"
         st.session_state[edge_sort_ascending_session_key] = False
@@ -2261,9 +2269,11 @@ with tab4:
         selected_player = st.selectbox(
             "Quick-fill Player",
             [""] + history_suggestions["players"],
-            index=0,
-            key="history_player_suggestion",
+            key=history_player_suggestion_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, history_player_suggestion_session_key, "history_player_suggestion"),
         )
+        persist_preference_if_changed(sport_label, "history_player_suggestion", selected_player, "")
         if st.button("Use Player Suggestion", use_container_width=True):
             st.session_state["history_player_input"] = selected_player
 
@@ -2271,9 +2281,11 @@ with tab4:
         selected_market = st.selectbox(
             "Quick-fill Market",
             [""] + history_suggestions["markets"],
-            index=0,
-            key="history_market_suggestion",
+            key=history_market_suggestion_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, history_market_suggestion_session_key, "history_market_suggestion"),
         )
+        persist_preference_if_changed(sport_label, "history_market_suggestion", selected_market, "")
         if st.button("Use Market Suggestion", use_container_width=True):
             st.session_state["history_market_input"] = selected_market
 
