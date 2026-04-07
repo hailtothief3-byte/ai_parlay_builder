@@ -814,6 +814,22 @@ def sync_view_preference_state(sport_label: str, session_key: str, preference_ke
         st.session_state[session_key] = get_view_preference(sport_label, preference_key, default)
 
 
+def sync_typed_view_preference_state(
+    sport_label: str,
+    session_key: str,
+    preference_key: str,
+    default,
+    caster,
+) -> None:
+    if session_key in st.session_state:
+        return
+    saved_value = get_view_preference(sport_label, preference_key, str(default))
+    try:
+        st.session_state[session_key] = caster(saved_value)
+    except Exception:
+        st.session_state[session_key] = default
+
+
 def persist_view_preference_from_session(sport_label: str, session_key: str, preference_key: str) -> None:
     save_view_preference(sport_label, preference_key, str(st.session_state.get(session_key, "Compact")))
 
@@ -1028,10 +1044,16 @@ board_view_session_key = f"board_view_mode_{sport_label}"
 edge_view_session_key = f"edge_view_mode_{sport_label}"
 parlay_view_session_key = f"parlay_view_mode_{sport_label}"
 demo_parlay_view_session_key = f"demo_parlay_view_mode_{sport_label}"
+live_min_conf_session_key = f"live_min_conf_{sport_label}"
+demo_min_conf_session_key = f"demo_min_conf_{sport_label}"
+demo_style_session_key = f"demo_style_{sport_label}"
 sync_view_preference_state(sport_label, board_view_session_key, "board_view_mode", "Compact")
 sync_view_preference_state(sport_label, edge_view_session_key, "edge_view_mode", "Compact")
 sync_view_preference_state(sport_label, parlay_view_session_key, "parlay_view_mode", "Compact")
 sync_view_preference_state(sport_label, demo_parlay_view_session_key, "demo_parlay_view_mode", "Compact")
+sync_typed_view_preference_state(sport_label, live_min_conf_session_key, "live_min_confidence", 65, int)
+sync_typed_view_preference_state(sport_label, demo_min_conf_session_key, "demo_min_confidence", 70, int)
+sync_view_preference_state(sport_label, demo_style_session_key, "demo_parlay_style", "Safe")
 render_shell_header(sport_label, sport_provider, board_type, sync_enabled, last_sync)
 if not sync_enabled:
     st.info("This sport is routed through the esports provider slot. Demo/live-seeded views work now; external esports API integration is the next step.")
@@ -1111,14 +1133,20 @@ with st.expander("View Preferences", expanded=False):
     view_pref_col1, view_pref_col2 = st.columns(2)
     view_pref_col1.write(f"Live Board: `{get_view_preference(sport_label, 'board_view_mode', 'Compact')}`")
     view_pref_col1.write(f"Edge Scanner: `{get_view_preference(sport_label, 'edge_view_mode', 'Compact')}`")
+    view_pref_col1.write(f"Live Min Confidence: `{get_view_preference(sport_label, 'live_min_confidence', '65')}`")
     view_pref_col2.write(f"Live Parlay Lab: `{get_view_preference(sport_label, 'parlay_view_mode', 'Compact')}`")
     view_pref_col2.write(f"Demo Parlay Lab: `{get_view_preference(sport_label, 'demo_parlay_view_mode', 'Compact')}`")
+    view_pref_col2.write(f"Demo Min Confidence: `{get_view_preference(sport_label, 'demo_min_confidence', '70')}`")
+    view_pref_col2.write(f"Demo Style: `{get_view_preference(sport_label, 'demo_parlay_style', 'Safe')}`")
     if st.button("Reset Views To Default", use_container_width=True, key="reset_view_preferences_button"):
         reset_view_preferences(sport_label)
         st.session_state[board_view_session_key] = "Compact"
         st.session_state[edge_view_session_key] = "Compact"
         st.session_state[parlay_view_session_key] = "Compact"
         st.session_state[demo_parlay_view_session_key] = "Compact"
+        st.session_state[live_min_conf_session_key] = 65
+        st.session_state[demo_min_conf_session_key] = 70
+        st.session_state[demo_style_session_key] = "Safe"
         st.success("View preferences reset to Compact for this sport.")
         st.rerun()
 
@@ -1820,7 +1848,14 @@ with tab3:
             if st.session_state.get("parlay_live_use_watchlist_alerts"):
                 st.info("Parlay Lab is currently focused on promoted watchlist alerts.")
             legs = st.slider("Legs", min_value=2, max_value=6, value=3)
-            min_confidence = st.slider("Minimum confidence", min_value=50, max_value=95, value=65)
+            min_confidence = st.slider(
+                "Minimum confidence",
+                min_value=50,
+                max_value=95,
+                key=live_min_conf_session_key,
+                on_change=persist_view_preference_from_session,
+                args=(sport_label, live_min_conf_session_key, "live_min_confidence"),
+            )
             allow_same_player = st.checkbox("Allow multiple picks on the same player", value=False)
 
             candidates = edge_df.copy()
@@ -1944,9 +1979,22 @@ with tab3:
         demo_bundle = demo_service.build_predictions(sport=sport_config["demo_key"])
 
         legs = st.slider("Demo legs", min_value=2, max_value=6, value=3, key="demo_legs")
-        min_confidence = st.slider("Demo minimum confidence", min_value=50, max_value=95, value=70, key="demo_conf")
+        min_confidence = st.slider(
+            "Demo minimum confidence",
+            min_value=50,
+            max_value=95,
+            key=demo_min_conf_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, demo_min_conf_session_key, "demo_min_confidence"),
+        )
         allow_same_team = st.checkbox("Allow same-team demo legs", value=False)
-        style = st.selectbox("Parlay style", ["Safe", "Balanced", "Aggressive"])
+        style = st.selectbox(
+            "Parlay style",
+            ["Safe", "Balanced", "Aggressive"],
+            key=demo_style_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, demo_style_session_key, "demo_parlay_style"),
+        )
         demo_ticket_name = st.text_input("Demo ticket name", value=f"{sport_label} Demo Ticket", key="demo_ticket_name")
         demo_ticket_notes = st.text_input("Demo ticket notes", key="demo_ticket_notes")
 
