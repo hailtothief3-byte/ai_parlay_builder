@@ -1041,7 +1041,17 @@ st.markdown(
 )
 
 selector_col1, selector_col2 = st.columns([1.2, 1.0])
-sport_label = selector_col1.selectbox("Sport", get_sport_labels())
+sport_labels = get_sport_labels()
+app_sport_session_key = "selected_sport_label"
+sync_view_preference_state("__app__", app_sport_session_key, "selected_sport_label", sport_labels[0])
+sport_label = selector_col1.selectbox(
+    "Sport",
+    sport_labels,
+    key=app_sport_session_key,
+    on_change=persist_view_preference_from_session,
+    args=("__app__", app_sport_session_key, "selected_sport_label"),
+)
+persist_preference_if_changed("__app__", "selected_sport_label", sport_label, sport_labels[0])
 board_type_session_key = f"board_type_{sport_label}"
 parlay_source_session_key = f"parlay_source_{sport_label}"
 sync_view_preference_state(sport_label, board_type_session_key, "board_type", "Sportsbook")
@@ -1187,6 +1197,7 @@ with st.expander("Watchlist", expanded=False):
 with st.expander("View Preferences", expanded=False):
     st.caption("Remembered per sport after you change them. Reset here if you want to return to the default compact views.")
     view_pref_col1, view_pref_col2 = st.columns(2)
+    view_pref_col1.write(f"Selected Sport: `{get_view_preference('__app__', 'selected_sport_label', sport_labels[0])}`")
     view_pref_col1.write(f"Board Type: `{get_view_preference(sport_label, 'board_type', 'Sportsbook')}`")
     view_pref_col1.write(f"Live Board: `{get_view_preference(sport_label, 'board_view_mode', 'Compact')}`")
     view_pref_col1.write(f"Board Show Non-Live: `{get_view_preference(sport_label, 'show_non_live_board', str(not sync_enabled))}`")
