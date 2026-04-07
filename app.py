@@ -1030,7 +1030,18 @@ st.markdown(
 
 selector_col1, selector_col2 = st.columns([1.2, 1.0])
 sport_label = selector_col1.selectbox("Sport", get_sport_labels())
-board_type = selector_col2.selectbox("Board Type", ["Sportsbook", "DFS"])
+board_type_session_key = f"board_type_{sport_label}"
+parlay_source_session_key = f"parlay_source_{sport_label}"
+sync_view_preference_state(sport_label, board_type_session_key, "board_type", "Sportsbook")
+sync_view_preference_state(sport_label, parlay_source_session_key, "parlay_source", "Live edges")
+board_type = selector_col2.selectbox(
+    "Board Type",
+    ["Sportsbook", "DFS"],
+    key=board_type_session_key,
+    on_change=persist_view_preference_from_session,
+    args=(sport_label, board_type_session_key, "board_type"),
+)
+persist_preference_if_changed(sport_label, "board_type", board_type, "Sportsbook")
 
 sport_config = get_sport_config(sport_label)
 live_sport_keys = resolve_live_keys_for_label(sport_label)
@@ -1142,10 +1153,12 @@ with st.expander("Watchlist", expanded=False):
 with st.expander("View Preferences", expanded=False):
     st.caption("Remembered per sport after you change them. Reset here if you want to return to the default compact views.")
     view_pref_col1, view_pref_col2 = st.columns(2)
+    view_pref_col1.write(f"Board Type: `{get_view_preference(sport_label, 'board_type', 'Sportsbook')}`")
     view_pref_col1.write(f"Live Board: `{get_view_preference(sport_label, 'board_view_mode', 'Compact')}`")
     view_pref_col1.write(f"Edge Scanner: `{get_view_preference(sport_label, 'edge_view_mode', 'Compact')}`")
     view_pref_col1.write(f"Live Legs: `{get_view_preference(sport_label, 'live_legs', '3')}`")
     view_pref_col1.write(f"Live Min Confidence: `{get_view_preference(sport_label, 'live_min_confidence', '65')}`")
+    view_pref_col2.write(f"Parlay Source: `{get_view_preference(sport_label, 'parlay_source', 'Live edges')}`")
     view_pref_col2.write(f"Live Parlay Lab: `{get_view_preference(sport_label, 'parlay_view_mode', 'Compact')}`")
     view_pref_col2.write(f"Demo Parlay Lab: `{get_view_preference(sport_label, 'demo_parlay_view_mode', 'Compact')}`")
     view_pref_col2.write(f"Demo Legs: `{get_view_preference(sport_label, 'demo_legs', '3')}`")
@@ -1153,6 +1166,8 @@ with st.expander("View Preferences", expanded=False):
     view_pref_col2.write(f"Demo Style: `{get_view_preference(sport_label, 'demo_parlay_style', 'Safe')}`")
     if st.button("Reset Views To Default", use_container_width=True, key="reset_view_preferences_button"):
         reset_view_preferences(sport_label)
+        st.session_state[board_type_session_key] = "Sportsbook"
+        st.session_state[parlay_source_session_key] = "Live edges"
         st.session_state[board_view_session_key] = "Compact"
         st.session_state[edge_view_session_key] = "Compact"
         st.session_state[parlay_view_session_key] = "Compact"
@@ -1825,7 +1840,15 @@ with tab3:
     render_section_header("Parlay Lab", "Build live or demo tickets with clearer stake planning and model context.")
     if st.session_state.get("dashboard_focus_target") == "parlay_lab":
         st.success("Notification focus is set to Parlay Lab. This is the right place to turn strong watchlist alerts into a draft ticket.")
-    source = st.radio("Parlay Source", ["Live edges", "Demo predictions"], horizontal=True)
+    source = st.radio(
+        "Parlay Source",
+        ["Live edges", "Demo predictions"],
+        horizontal=True,
+        key=parlay_source_session_key,
+        on_change=persist_view_preference_from_session,
+        args=(sport_label, parlay_source_session_key, "parlay_source"),
+    )
+    persist_preference_if_changed(sport_label, "parlay_source", source, "Live edges")
 
     if source == "Live edges":
         edge_df = pd.DataFrame()
