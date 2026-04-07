@@ -610,6 +610,69 @@ def prefer_player_display(df: pd.DataFrame, target_column: str = "player") -> pd
     return preferred
 
 
+def prettify_market_label(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    raw = str(value).strip()
+    if not raw:
+        return ""
+    market_map = {
+        "player_points": "Points",
+        "player_rebounds": "Rebounds",
+        "player_assists": "Assists",
+        "player_points_rebounds_assists": "PRA",
+        "player_threes": "3PT Made",
+        "player_first_basket": "First Basket",
+        "player_home_runs": "Home Runs",
+        "player_hits": "Hits",
+        "player_total_bases": "Total Bases",
+        "player_strikeouts": "Strikeouts",
+        "player_pass_yds": "Pass Yards",
+        "player_rush_yds": "Rush Yards",
+        "player_reception_yds": "Receiving Yards",
+        "player_receptions": "Receptions",
+        "Points": "Points",
+        "Rebounds": "Rebounds",
+        "Assists": "Assists",
+        "PRA": "PRA",
+        "First Basket": "First Basket",
+        "Home Run": "Home Runs",
+        "Pitcher Strikeouts": "Strikeouts",
+        "Total Bases": "Total Bases",
+        "Hits": "Hits",
+    }
+    if raw in market_map:
+        return market_map[raw]
+    return raw.replace("_", " ").title()
+
+
+def prettify_table_headers(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    header_map = {
+        "leg_rank": "Leg",
+        "player": "Player",
+        "player_team": "Team",
+        "sport": "Sport",
+        "market": "Market",
+        "pick": "Pick",
+        "line": "Line",
+        "projection": "Projection",
+        "predicted_value": "Projection",
+        "confidence": "Confidence",
+        "model_prob": "Model %",
+        "win_probability": "Model %",
+        "sportsbook": "Sportsbook",
+        "recommended_units": "Units",
+        "recommended_stake": "Stake",
+        "implied_prob": "Implied %",
+        "edge": "Edge %",
+        "team": "Team",
+        "opponent": "Opponent",
+    }
+    return df.rename(columns={col: header_map.get(col, col.replace("_", " ").title()) for col in df.columns})
+
+
 def build_watchlist_option_labels(df: pd.DataFrame) -> dict[str, int]:
     option_labels = {}
     for idx, row in df.iterrows():
@@ -1616,8 +1679,10 @@ with tab3:
                 )
                 parlay_df.insert(0, "leg_rank", range(1, len(parlay_df) + 1))
                 parlay_display = prefer_player_display(annotate_player_display(parlay_df))
+                if "market" in parlay_display.columns:
+                    parlay_display["market"] = parlay_display["market"].map(prettify_market_label)
                 st.dataframe(
-                    style_coverage_table(compact_numeric_table(parlay_display[
+                    style_coverage_table(compact_numeric_table(prettify_table_headers(parlay_display[
                         [
                             "leg_rank",
                             "player",
@@ -1635,7 +1700,7 @@ with tab3:
                             "recommended_stake",
                             "coverage_status",
                         ]
-                    ])),
+                    ]))),
                     use_container_width=True,
                 )
         if st.button("Save Live Ticket", use_container_width=True):
@@ -1688,6 +1753,8 @@ with tab3:
             render_empty_state("No demo parlay met the filters", "Adjust the demo confidence, leg count, or style to widen the candidate pool.", tone="warning")
         else:
             demo_parlay_display = prefer_player_display(annotate_player_display(parlay))
+            if "market" in demo_parlay_display.columns:
+                demo_parlay_display["market"] = demo_parlay_display["market"].map(prettify_market_label)
             demo_parlay_display = demo_parlay_display[
                 [
                     col for col in [
@@ -1714,7 +1781,7 @@ with tab3:
             )
             if "model_prob" in demo_parlay_display.columns:
                 demo_parlay_display["model_prob"] = (pd.to_numeric(demo_parlay_display["model_prob"], errors="coerce") * 100).round(2)
-            st.dataframe(compact_numeric_table(demo_parlay_display), use_container_width=True)
+            st.dataframe(compact_numeric_table(prettify_table_headers(demo_parlay_display)), use_container_width=True)
             if st.button("Save Demo Ticket", use_container_width=True):
                 ticket_id = save_ticket(
                     ticket_name=demo_ticket_name,
