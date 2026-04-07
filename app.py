@@ -2525,7 +2525,11 @@ with tab5:
 
     st.markdown("### Graded Picks")
     if graded_df.empty:
-        render_empty_state("No graded picks yet", "Track live edges, auto-sync settled results, or enter manual results to start filling this history.", tone="neutral")
+        render_empty_state(
+            "No graded picks yet",
+            "Track live edges, auto-sync settled results, or enter manual results to start filling this history. Graded filters and sort controls will appear here after your first graded pick.",
+            tone="neutral",
+        )
     else:
         graded_filter_col1, graded_filter_col2, graded_filter_col3 = st.columns(3)
         graded_market_filter = graded_filter_col1.selectbox(
