@@ -833,6 +833,13 @@ def sync_typed_view_preference_state(
 def persist_view_preference_from_session(sport_label: str, session_key: str, preference_key: str) -> None:
     save_view_preference(sport_label, preference_key, str(st.session_state.get(session_key, "Compact")))
 
+
+def persist_preference_if_changed(sport_label: str, preference_key: str, value, default) -> None:
+    current_saved = get_view_preference(sport_label, preference_key, str(default))
+    current_value = str(value)
+    if current_saved != current_value:
+        save_view_preference(sport_label, preference_key, current_value)
+
 init_db()
 
 st.set_page_config(
@@ -1045,13 +1052,17 @@ edge_view_session_key = f"edge_view_mode_{sport_label}"
 parlay_view_session_key = f"parlay_view_mode_{sport_label}"
 demo_parlay_view_session_key = f"demo_parlay_view_mode_{sport_label}"
 live_min_conf_session_key = f"live_min_conf_{sport_label}"
+live_legs_session_key = f"live_legs_{sport_label}"
+demo_legs_session_key = f"demo_legs_{sport_label}"
 demo_min_conf_session_key = f"demo_min_conf_{sport_label}"
 demo_style_session_key = f"demo_style_{sport_label}"
 sync_view_preference_state(sport_label, board_view_session_key, "board_view_mode", "Compact")
 sync_view_preference_state(sport_label, edge_view_session_key, "edge_view_mode", "Compact")
 sync_view_preference_state(sport_label, parlay_view_session_key, "parlay_view_mode", "Compact")
 sync_view_preference_state(sport_label, demo_parlay_view_session_key, "demo_parlay_view_mode", "Compact")
+sync_typed_view_preference_state(sport_label, live_legs_session_key, "live_legs", 3, int)
 sync_typed_view_preference_state(sport_label, live_min_conf_session_key, "live_min_confidence", 65, int)
+sync_typed_view_preference_state(sport_label, demo_legs_session_key, "demo_legs", 3, int)
 sync_typed_view_preference_state(sport_label, demo_min_conf_session_key, "demo_min_confidence", 70, int)
 sync_view_preference_state(sport_label, demo_style_session_key, "demo_parlay_style", "Safe")
 render_shell_header(sport_label, sport_provider, board_type, sync_enabled, last_sync)
@@ -1133,9 +1144,11 @@ with st.expander("View Preferences", expanded=False):
     view_pref_col1, view_pref_col2 = st.columns(2)
     view_pref_col1.write(f"Live Board: `{get_view_preference(sport_label, 'board_view_mode', 'Compact')}`")
     view_pref_col1.write(f"Edge Scanner: `{get_view_preference(sport_label, 'edge_view_mode', 'Compact')}`")
+    view_pref_col1.write(f"Live Legs: `{get_view_preference(sport_label, 'live_legs', '3')}`")
     view_pref_col1.write(f"Live Min Confidence: `{get_view_preference(sport_label, 'live_min_confidence', '65')}`")
     view_pref_col2.write(f"Live Parlay Lab: `{get_view_preference(sport_label, 'parlay_view_mode', 'Compact')}`")
     view_pref_col2.write(f"Demo Parlay Lab: `{get_view_preference(sport_label, 'demo_parlay_view_mode', 'Compact')}`")
+    view_pref_col2.write(f"Demo Legs: `{get_view_preference(sport_label, 'demo_legs', '3')}`")
     view_pref_col2.write(f"Demo Min Confidence: `{get_view_preference(sport_label, 'demo_min_confidence', '70')}`")
     view_pref_col2.write(f"Demo Style: `{get_view_preference(sport_label, 'demo_parlay_style', 'Safe')}`")
     if st.button("Reset Views To Default", use_container_width=True, key="reset_view_preferences_button"):
@@ -1144,7 +1157,9 @@ with st.expander("View Preferences", expanded=False):
         st.session_state[edge_view_session_key] = "Compact"
         st.session_state[parlay_view_session_key] = "Compact"
         st.session_state[demo_parlay_view_session_key] = "Compact"
+        st.session_state[live_legs_session_key] = 3
         st.session_state[live_min_conf_session_key] = 65
+        st.session_state[demo_legs_session_key] = 3
         st.session_state[demo_min_conf_session_key] = 70
         st.session_state[demo_style_session_key] = "Safe"
         st.success("View preferences reset to Compact for this sport.")
@@ -1847,7 +1862,14 @@ with tab3:
             )
             if st.session_state.get("parlay_live_use_watchlist_alerts"):
                 st.info("Parlay Lab is currently focused on promoted watchlist alerts.")
-            legs = st.slider("Legs", min_value=2, max_value=6, value=3)
+            legs = st.slider(
+                "Legs",
+                min_value=2,
+                max_value=6,
+                key=live_legs_session_key,
+                on_change=persist_view_preference_from_session,
+                args=(sport_label, live_legs_session_key, "live_legs"),
+            )
             min_confidence = st.slider(
                 "Minimum confidence",
                 min_value=50,
@@ -1856,6 +1878,8 @@ with tab3:
                 on_change=persist_view_preference_from_session,
                 args=(sport_label, live_min_conf_session_key, "live_min_confidence"),
             )
+            persist_preference_if_changed(sport_label, "live_legs", legs, 3)
+            persist_preference_if_changed(sport_label, "live_min_confidence", min_confidence, 65)
             allow_same_player = st.checkbox("Allow multiple picks on the same player", value=False)
 
             candidates = edge_df.copy()
@@ -1978,7 +2002,14 @@ with tab3:
         demo_service = ResearchService()
         demo_bundle = demo_service.build_predictions(sport=sport_config["demo_key"])
 
-        legs = st.slider("Demo legs", min_value=2, max_value=6, value=3, key="demo_legs")
+        legs = st.slider(
+            "Demo legs",
+            min_value=2,
+            max_value=6,
+            key=demo_legs_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, demo_legs_session_key, "demo_legs"),
+        )
         min_confidence = st.slider(
             "Demo minimum confidence",
             min_value=50,
@@ -1995,6 +2026,9 @@ with tab3:
             on_change=persist_view_preference_from_session,
             args=(sport_label, demo_style_session_key, "demo_parlay_style"),
         )
+        persist_preference_if_changed(sport_label, "demo_legs", legs, 3)
+        persist_preference_if_changed(sport_label, "demo_min_confidence", min_confidence, 70)
+        persist_preference_if_changed(sport_label, "demo_parlay_style", style, "Safe")
         demo_ticket_name = st.text_input("Demo ticket name", value=f"{sport_label} Demo Ticket", key="demo_ticket_name")
         demo_ticket_notes = st.text_input("Demo ticket notes", key="demo_ticket_notes")
 
