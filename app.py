@@ -259,6 +259,37 @@ def render_empty_state(title: str, body: str, tone: str = "neutral") -> None:
     )
 
 
+def render_workflow_check_item(title: str, ok: bool, detail: str) -> None:
+    badge_bg = "#d1fae5" if ok else "#fee2e2"
+    badge_text = "#065f46" if ok else "#991b1b"
+    badge_label = "Ready" if ok else "Pending"
+    st.markdown(
+        f"""
+        <div style="
+            background: rgba(255,255,255,0.8);
+            border: 1px solid rgba(31,41,55,0.08);
+            border-radius: 16px;
+            padding: 0.85rem 0.95rem;
+            margin-bottom: 0.55rem;
+        ">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;">
+                <div style="font-size:0.95rem;font-weight:800;color:#1f2937;">{title}</div>
+                <span style="
+                    background:{badge_bg};
+                    color:{badge_text};
+                    border-radius:999px;
+                    padding:0.22rem 0.55rem;
+                    font-size:0.78rem;
+                    font-weight:700;
+                ">{badge_label}</span>
+            </div>
+            <div style="margin-top:0.3rem;font-size:0.88rem;color:#6b7280;line-height:1.45;">{detail}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def format_freshness_label(raw_ts) -> str:
     if raw_ts is None or (isinstance(raw_ts, float) and pd.isna(raw_ts)):
         return "Last seen: unknown"
@@ -336,10 +367,11 @@ def render_watchlist_alert_card(row: pd.Series) -> None:
     confidence = float(row.get("confidence", 0.0) or 0.0)
     recommended_units = float(row.get("recommended_units", 0.0) or 0.0)
     freshness_label = format_freshness_label(row.get("pulled_at") or row.get("last_update"))
+    player_label = row.get("player_display") or row.get("player", "Unknown")
     st.markdown(
         f"""
         <div class="watchlist-alert-card">
-            <div class="watchlist-alert-card__title">{row.get("player", "Unknown")} - {row.get("market", "")}</div>
+            <div class="watchlist-alert-card__title">{player_label} - {row.get("market", "")}</div>
             <div class="watchlist-alert-card__subtitle">{row.get("pick", "")} | {row.get("sportsbook", "")}</div>
             <div class="watchlist-alert-card__metrics">
                 <div><span>Edge</span><strong>{edge_pct:.2f}%</strong></div>
@@ -372,6 +404,7 @@ def build_notification_center(
 
     if not watchlist_alerts.empty:
         top_alert = watchlist_alerts.sort_values(["confidence", "edge"], ascending=False).iloc[0]
+        player_label = str(top_alert.get("player_display") or top_alert.get("player") or "A watched prop")
         notices.append(
             {
                 "notice_id": "watchlist_alert_live",
@@ -379,7 +412,7 @@ def build_notification_center(
                 "severity": "high",
                 "title": "Watchlist alert live",
                 "message": (
-                    f"{top_alert.get('player', 'A watched prop')} {top_alert.get('pick', '')} "
+                    f"{player_label} {top_alert.get('pick', '')} "
                     f"is live with {float(top_alert.get('edge', 0.0) or 0.0) * 100:.1f}% edge "
                     f"at {float(top_alert.get('confidence', 0.0) or 0.0):.1f} confidence."
                 ).strip(),
@@ -524,14 +557,55 @@ def compact_numeric_table(df: pd.DataFrame) -> pd.DataFrame:
     formatted = df.copy()
     for column in formatted.columns:
         if pd.api.types.is_float_dtype(formatted[column]):
-            formatted[column] = formatted[column].round(3)
+            lowered = str(column).lower()
+            if any(token in lowered for token in ["confidence"]):
+                decimals = 1
+            elif any(token in lowered for token in ["prob", "edge", "line", "projection", "price", "stake", "units", "move", "odds", "value"]):
+                decimals = 2
+            else:
+                decimals = 2
+            formatted[column] = formatted[column].map(
+                lambda value: ""
+                if pd.isna(value)
+                else f"{float(value):.{decimals}f}".rstrip("0").rstrip(".")
+            )
     return formatted
+
+
+def annotate_player_display(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "player" not in df.columns:
+        return df
+
+    annotated = df.copy()
+    team_source = None
+    if "player_team" in annotated.columns:
+        team_source = "player_team"
+    elif "team" in annotated.columns:
+        team_source = "team"
+
+    if not team_source:
+        annotated["player_display"] = annotated["player"]
+        return annotated
+
+    def _build_label(row: pd.Series) -> str:
+        player = str(row.get("player") or "").strip()
+        team = str(row.get(team_source) or "").strip()
+        if not player:
+            return ""
+        if not team:
+            return player
+        if team.lower() in player.lower():
+            return player
+        return f"{player} ({team})"
+
+    annotated["player_display"] = annotated.apply(_build_label, axis=1)
+    return annotated
 
 
 def build_watchlist_option_labels(df: pd.DataFrame) -> dict[str, int]:
     option_labels = {}
     for idx, row in df.iterrows():
-        player = str(row.get("player", "Unknown"))
+        player = str(row.get("player_display") or row.get("player", "Unknown"))
         market = str(row.get("market", "Unknown"))
         pick = str(row.get("pick", ""))
         sportsbook = str(row.get("sportsbook", row.get("bookmaker_title", "")))
@@ -755,6 +829,7 @@ sgo_usage = safe_get_sportsgameodds_usage_summary()
 sgo_sync_estimate = estimate_sportsgameodds_sync_cost(sport_label) if sport_provider == "sportsgameodds" else None
 last_sync = get_last_sync("sportsgameodds", sport_label) if sport_provider == "sportsgameodds" else None
 watchlist_df = get_watchlist_df(sport_label)
+watchlist_df = annotate_player_display(watchlist_df) if not watchlist_df.empty else watchlist_df
 watchlist_alert_settings = get_watchlist_alert_settings(sport_label)
 render_shell_header(sport_label, sport_provider, board_type, sync_enabled, last_sync)
 if not sync_enabled:
@@ -796,15 +871,18 @@ with st.expander("Watchlist", expanded=False):
     if watchlist_df.empty:
         st.caption("No watchlist entries yet. Add rows from Live Board or Edge Scanner.")
     else:
+        watchlist_display = watchlist_df[
+            [col for col in ["player_display", "player_team", "market", "pick", "sportsbook", "line", "price", "created_at"] if col in watchlist_df.columns]
+        ].copy()
+        if "player_display" in watchlist_display.columns:
+            watchlist_display = watchlist_display.rename(columns={"player_display": "player"})
         st.dataframe(
-            compact_numeric_table(
-                watchlist_df[[col for col in ["player", "market", "pick", "sportsbook", "line", "price", "created_at"] if col in watchlist_df.columns]]
-            ),
+            compact_numeric_table(watchlist_display),
             use_container_width=True,
             hide_index=True,
         )
         watchlist_remove_options = {
-            f"{row['player']} | {row['market']} | {row.get('pick', '')}": row["watchlist_key"]
+            f"{row.get('player_display') or row['player']} | {row['market']} | {row.get('pick', '')}": row["watchlist_key"]
             for _, row in watchlist_df.iterrows()
         }
         selected_watchlist_removals = st.multiselect(
@@ -1065,6 +1143,7 @@ with tab0:
     render_section_header("Overview", "A quick read on live data, model activity, bankroll state, and ticket flow.")
     overview_board = get_latest_board(live_sport_keys, is_dfs=is_dfs) if live_sport_keys else pd.DataFrame()
     overview_board = annotate_watchlist_movement(overview_board, sport_label) if not overview_board.empty else overview_board
+    overview_board = annotate_player_display(overview_board) if not overview_board.empty else overview_board
     overview_edges = scan_edges(sport_key=live_sport_keys, is_dfs=is_dfs) if live_sport_keys else pd.DataFrame()
     overview_edges = apply_market_coverage(overview_edges, market_coverage_map) if not overview_edges.empty else overview_edges
     overview_edges = annotate_stake_recommendations(
@@ -1075,6 +1154,7 @@ with tab0:
         max_units=max_bet_units,
     ) if not overview_edges.empty else overview_edges
     overview_edges = annotate_watchlist_movement(overview_edges, sport_label) if not overview_edges.empty else overview_edges
+    overview_edges = annotate_player_display(overview_edges) if not overview_edges.empty else overview_edges
     overview_watchlist_alerts = get_watchlist_alerts(overview_edges, sport_label) if not overview_edges.empty else pd.DataFrame()
     overview_tracked = get_tracked_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
     overview_unresolved_tracked = get_unresolved_tracked_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
@@ -1083,6 +1163,7 @@ with tab0:
     overview_bankroll = build_bankroll_summary(overview_journal, bankroll_amount)
     overview_kpis = build_bankroll_kpis(overview_journal, bankroll_amount)
     overview_watchlist = get_watchlist_df(sport_label)
+    overview_watchlist = annotate_player_display(overview_watchlist) if not overview_watchlist.empty else overview_watchlist
     overview_tickets = get_ticket_summary_with_grades(sport_label)
     overview_notifications = build_notification_center(
         watchlist_alerts=overview_watchlist_alerts,
@@ -1141,6 +1222,65 @@ with tab0:
                 history_df["when"] = history_df["timestamp"].map(lambda value: format_relative_timestamp(value))
             st.dataframe(history_df, use_container_width=True, hide_index=True)
 
+    st.markdown("### Workflow Readiness")
+    workflow_left, workflow_right = st.columns(2)
+    with workflow_left:
+        render_workflow_check_item(
+            "Market data available",
+            ok=not overview_board.empty,
+            detail=(
+                f"{len(overview_board)} live board rows are loaded."
+                if not overview_board.empty
+                else "Run a live sync or seed demo data so the board can populate."
+            ),
+        )
+        render_workflow_check_item(
+            "Edge scanner populated",
+            ok=not overview_edges.empty,
+            detail=(
+                f"{len(overview_edges)} edge rows are available for ranking."
+                if not overview_edges.empty
+                else "Wait for market lines and projections so the scanner can rank props."
+            ),
+        )
+        render_workflow_check_item(
+            "Watchlist active",
+            ok=not overview_watchlist.empty,
+            detail=(
+                f"{len(overview_watchlist)} props are saved to the watchlist."
+                if not overview_watchlist.empty
+                else "Add a few props from Live Board or Edge Scanner to test the watchlist workflow."
+            ),
+        )
+    with workflow_right:
+        render_workflow_check_item(
+            "Ticket tracking started",
+            ok=not overview_tickets.empty,
+            detail=(
+                f"{len(overview_tickets)} saved tickets are available."
+                if not overview_tickets.empty
+                else "Save a live or demo ticket from Parlay Lab to test ticket tracking."
+            ),
+        )
+        render_workflow_check_item(
+            "Grading history exists",
+            ok=not overview_graded.empty,
+            detail=(
+                f"{len(overview_graded)} graded picks are ready for backtest views."
+                if not overview_graded.empty
+                else "Track edges and settle results to unlock true-results backtesting."
+            ),
+        )
+        render_workflow_check_item(
+            "Bankroll journal active",
+            ok=not overview_journal.empty,
+            detail=(
+                f"{len(overview_journal)} bankroll entries are logged."
+                if not overview_journal.empty
+                else "Add a manual journal entry or log a saved ticket to test bankroll tracking."
+            ),
+        )
+
     overview_col1, overview_col2, overview_col3, overview_col4 = st.columns(4)
     overview_col1.metric("Live Board Rows", f"{len(overview_board)}")
     overview_col2.metric("Live Edge Rows", f"{len(overview_edges)}")
@@ -1160,8 +1300,10 @@ with tab0:
             render_empty_state("No active watchlist alerts", "None of your watched props currently meet the saved alert thresholds.", tone="neutral")
         else:
             display_watchlist = overview_watchlist_alerts.head(10)[
-                [col for col in ["player", "market", "pick", "sportsbook", "edge", "confidence", "line_move", "line_move_label", "price_move", "price_move_label", "recommended_units", "recommended_stake"] if col in overview_watchlist_alerts.columns]
+                [col for col in ["player_display", "player_team", "market", "pick", "sportsbook", "edge", "confidence", "line_move", "line_move_label", "price_move", "price_move_label", "recommended_units", "recommended_stake"] if col in overview_watchlist_alerts.columns]
             ].copy()
+            if "player_display" in display_watchlist.columns:
+                display_watchlist = display_watchlist.rename(columns={"player_display": "player"})
             if "edge" in display_watchlist.columns:
                 display_watchlist["edge"] = (display_watchlist["edge"] * 100).round(2)
             st.dataframe(style_signal_table(compact_numeric_table(display_watchlist)), use_container_width=True, hide_index=True)
@@ -1175,8 +1317,10 @@ with tab0:
             top_overview_edges = top_overview_edges.sort_values(["confidence", "edge"], ascending=False).head(10)
             if not top_overview_edges.empty:
                 display_overview_edges = top_overview_edges[
-                    ["player", "market", "pick", "sportsbook", "edge", "confidence", "recommended_units", "recommended_stake"]
+                    [col for col in ["player_display", "player_team", "market", "pick", "sportsbook", "edge", "confidence", "recommended_units", "recommended_stake"] if col in top_overview_edges.columns]
                 ].copy()
+                if "player_display" in display_overview_edges.columns:
+                    display_overview_edges = display_overview_edges.rename(columns={"player_display": "player"})
                 display_overview_edges["edge"] = (display_overview_edges["edge"] * 100).round(2)
                 st.dataframe(style_signal_table(compact_numeric_table(display_overview_edges)), use_container_width=True, hide_index=True)
 
@@ -1201,8 +1345,10 @@ with tab0:
         else:
             watchlist_snapshot = watchlist_snapshot.sort_values(["confidence", "edge"], ascending=False).head(10)
             display_watchlist_snapshot = watchlist_snapshot[
-                [col for col in ["player", "market", "pick", "sportsbook", "edge", "confidence", "line_move", "line_move_label", "price_move", "price_move_label"] if col in watchlist_snapshot.columns]
+                [col for col in ["player_display", "player_team", "market", "pick", "sportsbook", "edge", "confidence", "line_move", "line_move_label", "price_move", "price_move_label"] if col in watchlist_snapshot.columns]
             ].copy()
+            if "player_display" in display_watchlist_snapshot.columns:
+                display_watchlist_snapshot = display_watchlist_snapshot.rename(columns={"player_display": "player"})
             if "edge" in display_watchlist_snapshot.columns:
                 display_watchlist_snapshot["edge"] = (display_watchlist_snapshot["edge"] * 100).round(2)
             st.dataframe(style_signal_table(compact_numeric_table(display_watchlist_snapshot)), use_container_width=True, hide_index=True)
@@ -1219,6 +1365,7 @@ with tab1:
     else:
         board = apply_market_coverage(board, market_coverage_map)
         board = annotate_watchlist_movement(board, sport_label)
+        board = annotate_player_display(board)
         show_non_live_board = st.checkbox(
             "Show demo-only/provider-unavailable markets",
             value=not sync_enabled,
@@ -1252,7 +1399,10 @@ with tab1:
             render_empty_state("No rows match this board view", "Try relaxing the filters or showing demo-only/provider-unavailable markets.", tone="info")
         else:
             display_board["watchlist"] = display_board["is_watchlisted"].map(lambda value: "Yes" if value else "")
-            st.dataframe(style_signal_table(compact_numeric_table(display_board)), use_container_width=True)
+            board_display = display_board.copy()
+            if "player_display" in board_display.columns:
+                board_display = board_display.rename(columns={"player_display": "player_label"})
+            st.dataframe(style_signal_table(compact_numeric_table(board_display)), use_container_width=True)
             st.download_button(
                 "Export Live Board CSV",
                 data=display_board.to_csv(index=False),
@@ -1295,8 +1445,9 @@ with tab2:
             unit_size=unit_size,
             kelly_fraction_cap=fractional_kelly,
             max_units=max_bet_units,
-        )
+        ) 
         edge_df = annotate_watchlist_movement(edge_df, sport_label)
+        edge_df = annotate_player_display(edge_df)
         alert_watchlist_edges = get_watchlist_alerts(edge_df, sport_label)
         show_non_live_edges = st.checkbox(
             "Show demo-only/provider-unavailable edge rows",
@@ -1336,7 +1487,10 @@ with tab2:
             render_empty_state("No rows match this edge view", "Try relaxing the filters, thresholds, or watchlist-only alert view.", tone="info")
         else:
             display_edges["watchlist"] = display_edges["is_watchlisted"].map(lambda value: "Yes" if value else "")
-            st.dataframe(style_signal_table(compact_numeric_table(display_edges)), use_container_width=True)
+            edge_display = display_edges.copy()
+            if "player_display" in edge_display.columns:
+                edge_display = edge_display.rename(columns={"player_display": "player_label"})
+            st.dataframe(style_signal_table(compact_numeric_table(edge_display)), use_container_width=True)
             st.download_button(
                 "Export Edge Scanner CSV",
                 data=display_edges.to_csv(index=False),
@@ -1402,6 +1556,7 @@ with tab3:
                 max_units=max_bet_units,
             )
             edge_df = annotate_watchlist_movement(edge_df, sport_label)
+            edge_df = annotate_player_display(edge_df)
             parlay_candidate_pool = st.radio(
                 "Live candidate pool",
                 ["All live edges", "Watchlist alerts"],
@@ -1456,11 +1611,15 @@ with tab3:
                     f"Estimated parlay decimal odds: {parlay_stake_plan['parlay_decimal_odds']}."
                 )
                 parlay_df.insert(0, "leg_rank", range(1, len(parlay_df) + 1))
+                parlay_display = annotate_player_display(parlay_df)
+                if "player_display" in parlay_display.columns:
+                    parlay_display = parlay_display.rename(columns={"player_display": "player_label"})
                 st.dataframe(
-                    style_coverage_table(compact_numeric_table(parlay_df[
+                    style_coverage_table(compact_numeric_table(parlay_display[
                         [
                             "leg_rank",
-                            "player",
+                            "player_label",
+                            "player_team",
                             "market",
                             "pick",
                             "sportsbook",
@@ -1526,7 +1685,10 @@ with tab3:
         if parlay.empty:
             render_empty_state("No demo parlay met the filters", "Adjust the demo confidence, leg count, or style to widen the candidate pool.", tone="warning")
         else:
-            st.dataframe(compact_numeric_table(parlay), use_container_width=True)
+            demo_parlay_display = annotate_player_display(parlay)
+            if "player_display" in demo_parlay_display.columns:
+                demo_parlay_display = demo_parlay_display.rename(columns={"player_display": "player_label"})
+            st.dataframe(compact_numeric_table(demo_parlay_display), use_container_width=True)
             if st.button("Save Demo Ticket", use_container_width=True):
                 ticket_id = save_ticket(
                     ticket_name=demo_ticket_name,

@@ -211,6 +211,30 @@ def _player_name_from_event(event_payload: dict, odd: dict) -> str | None:
     return player.get("name")
 
 
+def _player_team_from_event(event_payload: dict, odd: dict) -> str | None:
+    player_id = odd.get("playerID") or odd.get("statEntityID")
+    players = event_payload.get("players", {}) if isinstance(event_payload.get("players"), dict) else {}
+    teams = event_payload.get("teams", {}) if isinstance(event_payload.get("teams"), dict) else {}
+    player = players.get(player_id, {}) if isinstance(players.get(player_id), dict) else {}
+    player_team_id = player.get("teamID")
+    if not player_team_id:
+        return None
+
+    for side in ["home", "away"]:
+        team = teams.get(side, {}) if isinstance(teams.get(side), dict) else {}
+        if str(team.get("teamID") or "") != str(player_team_id):
+            continue
+        names = team.get("names", {}) if isinstance(team.get("names"), dict) else {}
+        return (
+            names.get("short")
+            or names.get("medium")
+            or names.get("long")
+            or names.get("location")
+            or team.get("name")
+        )
+    return None
+
+
 def _market_key_from_odd(odd: dict) -> str | None:
     odd_id = str(odd.get("oddID") or odd.get("marketID") or odd.get("marketKey") or "")
     stat_id = odd_id.split("-")[0] if odd_id else ""
@@ -359,6 +383,7 @@ def _normalize_market_lines(event_payload: dict, sport_key: str, pulled_at: date
             continue
 
         by_bookmaker = odd.get("byBookmaker", {}) if isinstance(odd.get("byBookmaker"), dict) else {}
+        player_team = _player_team_from_event(event_payload, odd)
         if by_bookmaker:
             for bookmaker_key, bookmaker_data in by_bookmaker.items():
                 if not isinstance(bookmaker_data, dict):
@@ -401,7 +426,15 @@ def _normalize_market_lines(event_payload: dict, sport_key: str, pulled_at: date
                         "event_commence_time": event_commence_time,
                         "last_update": last_update,
                         "pulled_at": pulled_at,
-                        "raw_json": str({"odd": odd, "bookmaker": bookmaker_key, "data": bookmaker_data}),
+                        "raw_json": json.dumps(
+                            {
+                                "odd": odd,
+                                "bookmaker": bookmaker_key,
+                                "data": bookmaker_data,
+                                "player_team": player_team,
+                            },
+                            default=str,
+                        ),
                     }
                 )
         else:
@@ -429,7 +462,13 @@ def _normalize_market_lines(event_payload: dict, sport_key: str, pulled_at: date
                     "event_commence_time": event_commence_time,
                     "last_update": last_update,
                     "pulled_at": pulled_at,
-                    "raw_json": str(odd),
+                    "raw_json": json.dumps(
+                        {
+                            "odd": odd,
+                            "player_team": player_team,
+                        },
+                        default=str,
+                    ),
                 }
             )
 

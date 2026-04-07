@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 from random import Random
 
 from sqlalchemy import delete
@@ -83,6 +84,10 @@ def _insert_event(db, sport_key: str, event_id: str, home_team: str, away_team: 
         )
 
 
+def _demo_player_team(player_idx: int, home_team: str, away_team: str) -> str:
+    return away_team if player_idx % 2 else home_team
+
+
 def clear_demo_live_data(sport_label: str) -> int:
     sport_key = get_sport_config(sport_label)["live_keys"][0]
     prefix = f"{_demo_prefix(sport_label)}_%"
@@ -139,6 +144,7 @@ def seed_demo_live_data(sport_label: str) -> dict[str, int]:
 
             event_players = players[(event_idx - 1) * 3 : event_idx * 3]
             for player_idx, player_name in enumerate(event_players, start=1):
+                player_team = _demo_player_team(player_idx, home_team, away_team)
                 for market_idx, market_key in enumerate(prop_markets):
                     base_line, std_dev = MARKET_BASELINES[market_key]
                     line_anchor = round(base_line + rng.uniform(-1.8, 1.8), 1)
@@ -172,7 +178,15 @@ def seed_demo_live_data(sport_label: str) -> dict[str, int]:
                                     event_commence_time=commence_time,
                                     last_update=last_update,
                                     pulled_at=pulled_at,
-                                    raw_json=f"demo:{sport_label}:{market_key}:over",
+                                    raw_json=json.dumps(
+                                        {
+                                            "source": "demo_seed",
+                                            "sport": sport_label,
+                                            "market": market_key,
+                                            "side": "over",
+                                            "player_team": player_team,
+                                        }
+                                    ),
                                 )
                             )
                             db.add(
@@ -191,7 +205,15 @@ def seed_demo_live_data(sport_label: str) -> dict[str, int]:
                                     event_commence_time=commence_time,
                                     last_update=last_update,
                                     pulled_at=pulled_at,
-                                    raw_json=f"demo:{sport_label}:{market_key}:under",
+                                    raw_json=json.dumps(
+                                        {
+                                            "source": "demo_seed",
+                                            "sport": sport_label,
+                                            "market": market_key,
+                                            "side": "under",
+                                            "player_team": player_team,
+                                        }
+                                    ),
                                 )
                             )
                             line_count += 2
@@ -236,7 +258,15 @@ def seed_demo_live_data(sport_label: str) -> dict[str, int]:
                                 event_commence_time=commence_time,
                                 last_update=last_update,
                                 pulled_at=pulled_at,
-                                raw_json=f"demo:{sport_label}:{market_key}:dfs",
+                                raw_json=json.dumps(
+                                    {
+                                        "source": "demo_seed",
+                                        "sport": sport_label,
+                                        "market": market_key,
+                                        "side": "over",
+                                        "player_team": player_team,
+                                    }
+                                ),
                             )
                         )
                         line_count += 1

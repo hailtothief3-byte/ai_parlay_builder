@@ -47,6 +47,7 @@ def _serialize_row(row: pd.Series, sport_label: str) -> dict[str, Any]:
         "sport_label": sport_label,
         "external_event_id": _normalize_value(row.get("external_event_id")),
         "player": _normalize_value(row.get("player")),
+        "player_team": _normalize_value(row.get("player_team") or row.get("team")),
         "market": _normalize_value(row.get("market")),
         "pick": _normalize_value(row.get("pick")),
         "sportsbook": _normalize_value(row.get("sportsbook")),

@@ -9,9 +9,14 @@ def build_prop_cards(edge_df: pd.DataFrame, top_n: int = 10) -> list[dict]:
     top = edge_df.head(top_n)
 
     for _, row in top.iterrows():
+        player_label = row.get("player_display") or (
+            f"{row['player']} ({row.get('player_team')})"
+            if row.get("player_team")
+            else row["player"]
+        )
         cards.append(
             {
-                "title": f"{row['player']} - {row['market']}",
+                "title": f"{player_label} - {row['market']}",
                 "pick": f"{row['pick']} {row['line']}",
                 "sportsbook": row["sportsbook"],
                 "projection": round(float(row["projection"]), 2),
