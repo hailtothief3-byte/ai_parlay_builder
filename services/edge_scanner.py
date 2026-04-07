@@ -122,6 +122,8 @@ def scan_edges(sport_key: str | list[str], is_dfs: bool | None = None) -> pd.Dat
                     books_count=int(row.get("books_count", 1) or 1),
                     line_delta=line_delta,
                 ),
+                "pulled_at": row.get("pulled_at"),
+                "last_update": row.get("last_update"),
                 "is_dfs": row["is_dfs"],
             }
         )
