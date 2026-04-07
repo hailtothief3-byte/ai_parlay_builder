@@ -72,3 +72,7 @@ def save_view_preference(sport_label: str, preference_key: str, value: str) -> N
     payload = _load_state(sport_label)
     payload[preference_key] = value
     _save_state(sport_label, payload)
+
+
+def reset_view_preferences(sport_label: str) -> None:
+    _save_state(sport_label, {})
