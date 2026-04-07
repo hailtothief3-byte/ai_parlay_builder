@@ -42,6 +42,7 @@ from services.sync_policy import get_last_sync, get_sync_payload
 from services.ticket_service import export_ticket_legs_for_csv, get_saved_tickets, get_ticket_legs, get_ticket_legs_with_results, get_ticket_summary_with_grades, import_ticket_legs_csv, save_ticket
 from services.usage_guard import estimate_sportsgameodds_sync_cost, safe_get_sportsgameodds_usage_summary
 from services.notification_state_service import dismiss_notification, get_notification_history_rows, is_notification_visible, reset_notification, snooze_notification
+from services.view_preferences_service import get_view_preference, save_view_preference
 from services.watchlist_service import (
     add_watchlist_rows,
     annotate_watchlist_movement,
@@ -807,6 +808,17 @@ def promote_watchlist_alerts_to_parlay_lab() -> None:
 def set_dashboard_focus(target: str) -> None:
     st.session_state["dashboard_focus_target"] = target
 
+
+def sync_view_preference_state(sport_label: str, session_key: str, preference_key: str, default: str) -> None:
+    if session_key not in st.session_state:
+        st.session_state[session_key] = get_view_preference(sport_label, preference_key, default)
+        return
+
+    current_value = str(st.session_state.get(session_key, default))
+    saved_value = get_view_preference(sport_label, preference_key, default)
+    if current_value != saved_value:
+        save_view_preference(sport_label, preference_key, current_value)
+
 init_db()
 
 st.set_page_config(
@@ -1014,6 +1026,14 @@ last_sync = get_last_sync("sportsgameodds", sport_label) if sport_provider == "s
 watchlist_df = get_watchlist_df(sport_label)
 watchlist_df = annotate_player_display(watchlist_df) if not watchlist_df.empty else watchlist_df
 watchlist_alert_settings = get_watchlist_alert_settings(sport_label)
+board_view_session_key = f"board_view_mode_{sport_label}"
+edge_view_session_key = f"edge_view_mode_{sport_label}"
+parlay_view_session_key = f"parlay_view_mode_{sport_label}"
+demo_parlay_view_session_key = f"demo_parlay_view_mode_{sport_label}"
+sync_view_preference_state(sport_label, board_view_session_key, "board_view_mode", "Compact")
+sync_view_preference_state(sport_label, edge_view_session_key, "edge_view_mode", "Compact")
+sync_view_preference_state(sport_label, parlay_view_session_key, "parlay_view_mode", "Compact")
+sync_view_preference_state(sport_label, demo_parlay_view_session_key, "demo_parlay_view_mode", "Compact")
 render_shell_header(sport_label, sport_provider, board_type, sync_enabled, last_sync)
 if not sync_enabled:
     st.info("This sport is routed through the esports provider slot. Demo/live-seeded views work now; external esports API integration is the next step.")
@@ -1562,8 +1582,9 @@ with tab1:
             "Board view",
             ["Compact", "Expanded"],
             horizontal=True,
-            key="board_view_mode",
+            key=board_view_session_key,
         )
+        save_view_preference(sport_label, "board_view_mode", board_view_mode)
         show_non_live_board = st.checkbox(
             "Show demo-only/provider-unavailable markets",
             value=not sync_enabled,
@@ -1652,8 +1673,9 @@ with tab2:
             "Edge view",
             ["Compact", "Expanded"],
             horizontal=True,
-            key="edge_view_mode",
+            key=edge_view_session_key,
         )
+        save_view_preference(sport_label, "edge_view_mode", edge_view_mode)
         alert_watchlist_edges = get_watchlist_alerts(edge_df, sport_label)
         show_non_live_edges = st.checkbox(
             "Show demo-only/provider-unavailable edge rows",
@@ -1769,8 +1791,9 @@ with tab3:
                 "Parlay table view",
                 ["Compact", "Expanded"],
                 horizontal=True,
-                key="parlay_view_mode",
+                key=parlay_view_session_key,
             )
+            save_view_preference(sport_label, "parlay_view_mode", parlay_view_mode)
             parlay_candidate_pool = st.radio(
                 "Live candidate pool",
                 ["All live edges", "Watchlist alerts"],
@@ -1931,8 +1954,9 @@ with tab3:
                 "Demo parlay table view",
                 ["Compact", "Expanded"],
                 horizontal=True,
-                key="demo_parlay_view_mode",
+                key=demo_parlay_view_session_key,
             )
+            save_view_preference(sport_label, "demo_parlay_view_mode", demo_parlay_view_mode)
             demo_parlay_display = demo_parlay_display[
                 [
                     col for col in (
