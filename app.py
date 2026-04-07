@@ -1074,10 +1074,14 @@ board_view_session_key = f"board_view_mode_{sport_label}"
 edge_view_session_key = f"edge_view_mode_{sport_label}"
 parlay_view_session_key = f"parlay_view_mode_{sport_label}"
 demo_parlay_view_session_key = f"demo_parlay_view_mode_{sport_label}"
+show_non_live_board_session_key = f"show_non_live_board_{sport_label}"
+show_non_live_edges_session_key = f"show_non_live_edges_{sport_label}"
 board_market_filter_session_key = f"board_market_filter_{sport_label}"
+board_sort_by_session_key = f"board_sort_by_{sport_label}"
 board_sort_ascending_session_key = f"board_sort_ascending_{sport_label}"
 board_watchlist_only_session_key = f"board_watchlist_only_{sport_label}"
 edge_market_filter_session_key = f"edge_market_filter_{sport_label}"
+edge_sort_by_session_key = f"edge_sort_by_{sport_label}"
 edge_sort_ascending_session_key = f"edge_sort_ascending_{sport_label}"
 edge_watchlist_only_session_key = f"edge_watchlist_only_{sport_label}"
 edge_alerts_only_session_key = f"edge_alerts_only_{sport_label}"
@@ -1090,10 +1094,14 @@ sync_view_preference_state(sport_label, board_view_session_key, "board_view_mode
 sync_view_preference_state(sport_label, edge_view_session_key, "edge_view_mode", "Compact")
 sync_view_preference_state(sport_label, parlay_view_session_key, "parlay_view_mode", "Compact")
 sync_view_preference_state(sport_label, demo_parlay_view_session_key, "demo_parlay_view_mode", "Compact")
+sync_bool_view_preference_state(sport_label, show_non_live_board_session_key, "show_non_live_board", not sync_enabled)
+sync_bool_view_preference_state(sport_label, show_non_live_edges_session_key, "show_non_live_edges", False)
 sync_view_preference_state(sport_label, board_market_filter_session_key, "board_market_filter", "")
+sync_view_preference_state(sport_label, board_sort_by_session_key, "board_sort_by", "pulled_at")
 sync_bool_view_preference_state(sport_label, board_sort_ascending_session_key, "board_sort_ascending", False)
 sync_bool_view_preference_state(sport_label, board_watchlist_only_session_key, "board_watchlist_only", False)
 sync_view_preference_state(sport_label, edge_market_filter_session_key, "edge_market_filter", "")
+sync_view_preference_state(sport_label, edge_sort_by_session_key, "edge_sort_by", "confidence")
 sync_bool_view_preference_state(sport_label, edge_sort_ascending_session_key, "edge_sort_ascending", False)
 sync_bool_view_preference_state(sport_label, edge_watchlist_only_session_key, "edge_watchlist_only", False)
 sync_bool_view_preference_state(sport_label, edge_alerts_only_session_key, "edge_alerts_only", False)
@@ -1181,11 +1189,15 @@ with st.expander("View Preferences", expanded=False):
     view_pref_col1, view_pref_col2 = st.columns(2)
     view_pref_col1.write(f"Board Type: `{get_view_preference(sport_label, 'board_type', 'Sportsbook')}`")
     view_pref_col1.write(f"Live Board: `{get_view_preference(sport_label, 'board_view_mode', 'Compact')}`")
+    view_pref_col1.write(f"Board Show Non-Live: `{get_view_preference(sport_label, 'show_non_live_board', str(not sync_enabled))}`")
     view_pref_col1.write(f"Board Market Filter: `{get_view_preference(sport_label, 'board_market_filter', '') or 'Any'}`")
+    view_pref_col1.write(f"Board Sort By: `{get_view_preference(sport_label, 'board_sort_by', 'pulled_at')}`")
     view_pref_col1.write(f"Board Ascending: `{get_view_preference(sport_label, 'board_sort_ascending', 'False')}`")
     view_pref_col1.write(f"Board Watchlist Only: `{get_view_preference(sport_label, 'board_watchlist_only', 'False')}`")
     view_pref_col1.write(f"Edge Scanner: `{get_view_preference(sport_label, 'edge_view_mode', 'Compact')}`")
+    view_pref_col1.write(f"Edge Show Non-Live: `{get_view_preference(sport_label, 'show_non_live_edges', 'False')}`")
     view_pref_col1.write(f"Edge Market Filter: `{get_view_preference(sport_label, 'edge_market_filter', '') or 'Any'}`")
+    view_pref_col1.write(f"Edge Sort By: `{get_view_preference(sport_label, 'edge_sort_by', 'confidence')}`")
     view_pref_col1.write(f"Edge Ascending: `{get_view_preference(sport_label, 'edge_sort_ascending', 'False')}`")
     view_pref_col1.write(f"Edge Watchlist Only: `{get_view_preference(sport_label, 'edge_watchlist_only', 'False')}`")
     view_pref_col1.write(f"Edge Alerts Only: `{get_view_preference(sport_label, 'edge_alerts_only', 'False')}`")
@@ -1202,11 +1214,15 @@ with st.expander("View Preferences", expanded=False):
         st.session_state[board_type_session_key] = "Sportsbook"
         st.session_state[parlay_source_session_key] = "Live edges"
         st.session_state[board_view_session_key] = "Compact"
+        st.session_state[show_non_live_board_session_key] = not sync_enabled
         st.session_state[board_market_filter_session_key] = ""
+        st.session_state[board_sort_by_session_key] = "pulled_at"
         st.session_state[board_sort_ascending_session_key] = False
         st.session_state[board_watchlist_only_session_key] = False
         st.session_state[edge_view_session_key] = "Compact"
+        st.session_state[show_non_live_edges_session_key] = False
         st.session_state[edge_market_filter_session_key] = ""
+        st.session_state[edge_sort_by_session_key] = "confidence"
         st.session_state[edge_sort_ascending_session_key] = False
         st.session_state[edge_watchlist_only_session_key] = False
         st.session_state[edge_alerts_only_session_key] = False
@@ -1700,9 +1716,11 @@ with tab1:
         )
         show_non_live_board = st.checkbox(
             "Show demo-only/provider-unavailable markets",
-            value=not sync_enabled,
-            key="show_non_live_board",
+            key=show_non_live_board_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, show_non_live_board_session_key, "show_non_live_board"),
         )
+        persist_preference_if_changed(sport_label, "show_non_live_board", show_non_live_board, not sync_enabled)
         display_board = board if show_non_live_board else board[board["coverage_status"] == "Live"].copy()
         board_filter_col1, board_filter_col2, board_filter_col3, board_filter_col4, board_filter_col5 = st.columns(5)
         board_market_filter = board_filter_col1.selectbox(
@@ -1716,7 +1734,9 @@ with tab1:
         board_sort_by = board_filter_col3.selectbox(
             "Sort by",
             [col for col in ["pulled_at", "line", "price", "player", "market"] if col in display_board.columns] if not display_board.empty else [""],
-            key="board_sort_by",
+            key=board_sort_by_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, board_sort_by_session_key, "board_sort_by"),
         )
         board_sort_ascending = board_filter_col4.checkbox(
             "Ascending",
@@ -1731,6 +1751,7 @@ with tab1:
             args=(sport_label, board_watchlist_only_session_key, "board_watchlist_only"),
         )
         persist_preference_if_changed(sport_label, "board_market_filter", board_market_filter, "")
+        persist_preference_if_changed(sport_label, "board_sort_by", board_sort_by, "pulled_at")
         persist_preference_if_changed(sport_label, "board_sort_ascending", board_sort_ascending, False)
         persist_preference_if_changed(sport_label, "board_watchlist_only", board_watchlist_only, False)
         display_board = filter_dataframe(
@@ -1808,9 +1829,11 @@ with tab2:
         alert_watchlist_edges = get_watchlist_alerts(edge_df, sport_label)
         show_non_live_edges = st.checkbox(
             "Show demo-only/provider-unavailable edge rows",
-            value=False,
-            key="show_non_live_edges",
+            key=show_non_live_edges_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, show_non_live_edges_session_key, "show_non_live_edges"),
         )
+        persist_preference_if_changed(sport_label, "show_non_live_edges", show_non_live_edges, False)
         display_edges = edge_df if show_non_live_edges else edge_df[edge_df["coverage_status"] == "Live"].copy()
         edge_filter_col1, edge_filter_col2, edge_filter_col3, edge_filter_col4, edge_filter_col5, edge_filter_col6 = st.columns(6)
         edge_market_filter = edge_filter_col1.selectbox(
@@ -1824,7 +1847,9 @@ with tab2:
         edge_sort_by = edge_filter_col3.selectbox(
             "Sort by",
             [col for col in ["confidence", "edge", "model_prob", "recommended_stake", "player"] if col in display_edges.columns] if not display_edges.empty else [""],
-            key="edge_sort_by",
+            key=edge_sort_by_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, edge_sort_by_session_key, "edge_sort_by"),
         )
         edge_sort_ascending = edge_filter_col4.checkbox(
             "Ascending",
@@ -1845,6 +1870,7 @@ with tab2:
             args=(sport_label, edge_alerts_only_session_key, "edge_alerts_only"),
         )
         persist_preference_if_changed(sport_label, "edge_market_filter", edge_market_filter, "")
+        persist_preference_if_changed(sport_label, "edge_sort_by", edge_sort_by, "confidence")
         persist_preference_if_changed(sport_label, "edge_sort_ascending", edge_sort_ascending, False)
         persist_preference_if_changed(sport_label, "edge_watchlist_only", edge_watchlist_only, False)
         persist_preference_if_changed(sport_label, "edge_alerts_only", edge_alerts_only, False)
