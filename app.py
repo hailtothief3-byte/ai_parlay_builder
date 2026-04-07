@@ -673,6 +673,62 @@ def prettify_table_headers(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={col: header_map.get(col, col.replace("_", " ").title()) for col in df.columns})
 
 
+def format_bet_label(row: pd.Series) -> str:
+    pick = str(row.get("pick") or "").strip()
+    line = row.get("line")
+    market = prettify_market_label(row.get("market"))
+    if pd.isna(line) or line in (None, ""):
+        return f"{pick} {market}".strip()
+    line_text = f"{float(line):.1f}".rstrip("0").rstrip(".")
+    return f"{pick} {line_text} {market}".strip()
+
+
+def build_clean_live_board_display(df: pd.DataFrame) -> pd.DataFrame:
+    display = prefer_player_display(annotate_player_display(df.copy()))
+    if "market" in display.columns:
+        display["market"] = display["market"].map(prettify_market_label)
+    display["bet"] = display.apply(format_bet_label, axis=1)
+    ordered_columns = [
+        "sportsbook",
+        "player",
+        "player_team",
+        "bet",
+        "price",
+        "commence_time",
+        "last_update",
+        "coverage_status",
+        "watchlist",
+    ]
+    fallback_columns = [col for col in ordered_columns if col in display.columns]
+    cleaned = display[fallback_columns].copy()
+    return prettify_table_headers(cleaned)
+
+
+def build_clean_edge_display(df: pd.DataFrame) -> pd.DataFrame:
+    display = prefer_player_display(annotate_player_display(df.copy()))
+    if "market" in display.columns:
+        display["market"] = display["market"].map(prettify_market_label)
+    display["bet"] = display.apply(format_bet_label, axis=1)
+    ordered_columns = [
+        "player",
+        "player_team",
+        "bet",
+        "sportsbook",
+        "projection",
+        "model_prob",
+        "implied_prob",
+        "edge",
+        "confidence",
+        "recommended_units",
+        "recommended_stake",
+        "coverage_status",
+        "watchlist",
+    ]
+    fallback_columns = [col for col in ordered_columns if col in display.columns]
+    cleaned = display[fallback_columns].copy()
+    return prettify_table_headers(cleaned)
+
+
 def build_watchlist_option_labels(df: pd.DataFrame) -> dict[str, int]:
     option_labels = {}
     for idx, row in df.iterrows():
@@ -1375,8 +1431,11 @@ with tab0:
             ].copy()
             if "player_display" in display_watchlist.columns:
                 display_watchlist = display_watchlist.rename(columns={"player_display": "player"})
+            if "market" in display_watchlist.columns:
+                display_watchlist["market"] = display_watchlist["market"].map(prettify_market_label)
             if "edge" in display_watchlist.columns:
                 display_watchlist["edge"] = (display_watchlist["edge"] * 100).round(2)
+            display_watchlist = prettify_table_headers(display_watchlist)
             st.dataframe(style_signal_table(compact_numeric_table(display_watchlist)), use_container_width=True, hide_index=True)
 
     with right_col:
@@ -1392,7 +1451,10 @@ with tab0:
                 ].copy()
                 if "player_display" in display_overview_edges.columns:
                     display_overview_edges = display_overview_edges.rename(columns={"player_display": "player"})
+                if "market" in display_overview_edges.columns:
+                    display_overview_edges["market"] = display_overview_edges["market"].map(prettify_market_label)
                 display_overview_edges["edge"] = (display_overview_edges["edge"] * 100).round(2)
+                display_overview_edges = prettify_table_headers(display_overview_edges)
                 st.dataframe(style_signal_table(compact_numeric_table(display_overview_edges)), use_container_width=True, hide_index=True)
 
     overview_ticket_col, overview_saved_col = st.columns(2)
@@ -1420,8 +1482,11 @@ with tab0:
             ].copy()
             if "player_display" in display_watchlist_snapshot.columns:
                 display_watchlist_snapshot = display_watchlist_snapshot.rename(columns={"player_display": "player"})
+            if "market" in display_watchlist_snapshot.columns:
+                display_watchlist_snapshot["market"] = display_watchlist_snapshot["market"].map(prettify_market_label)
             if "edge" in display_watchlist_snapshot.columns:
                 display_watchlist_snapshot["edge"] = (display_watchlist_snapshot["edge"] * 100).round(2)
+            display_watchlist_snapshot = prettify_table_headers(display_watchlist_snapshot)
             st.dataframe(style_signal_table(compact_numeric_table(display_watchlist_snapshot)), use_container_width=True, hide_index=True)
 
 with tab1:
@@ -1470,7 +1535,7 @@ with tab1:
             render_empty_state("No rows match this board view", "Try relaxing the filters or showing demo-only/provider-unavailable markets.", tone="info")
         else:
             display_board["watchlist"] = display_board["is_watchlisted"].map(lambda value: "Yes" if value else "")
-            board_display = prefer_player_display(display_board.copy())
+            board_display = build_clean_live_board_display(display_board)
             st.dataframe(style_signal_table(compact_numeric_table(board_display)), use_container_width=True)
             st.download_button(
                 "Export Live Board CSV",
@@ -1556,7 +1621,7 @@ with tab2:
             render_empty_state("No rows match this edge view", "Try relaxing the filters, thresholds, or watchlist-only alert view.", tone="info")
         else:
             display_edges["watchlist"] = display_edges["is_watchlisted"].map(lambda value: "Yes" if value else "")
-            edge_display = prefer_player_display(display_edges.copy())
+            edge_display = build_clean_edge_display(display_edges)
             st.dataframe(style_signal_table(compact_numeric_table(edge_display)), use_container_width=True)
             st.download_button(
                 "Export Edge Scanner CSV",
@@ -1681,16 +1746,15 @@ with tab3:
                 parlay_display = prefer_player_display(annotate_player_display(parlay_df))
                 if "market" in parlay_display.columns:
                     parlay_display["market"] = parlay_display["market"].map(prettify_market_label)
+                parlay_display["bet"] = parlay_display.apply(format_bet_label, axis=1)
                 st.dataframe(
                     style_coverage_table(compact_numeric_table(prettify_table_headers(parlay_display[
                         [
                             "leg_rank",
                             "player",
                             "player_team",
-                            "market",
-                            "pick",
+                            "bet",
                             "sportsbook",
-                            "line",
                             "projection",
                             "model_prob",
                             "implied_prob",
@@ -1755,15 +1819,14 @@ with tab3:
             demo_parlay_display = prefer_player_display(annotate_player_display(parlay))
             if "market" in demo_parlay_display.columns:
                 demo_parlay_display["market"] = demo_parlay_display["market"].map(prettify_market_label)
+            demo_parlay_display["bet"] = demo_parlay_display.apply(format_bet_label, axis=1)
             demo_parlay_display = demo_parlay_display[
                 [
                     col for col in [
                         "leg_rank",
                         "sport",
                         "player",
-                        "market",
-                        "pick",
-                        "line",
+                        "bet",
                         "predicted_value",
                         "confidence",
                         "win_probability",
