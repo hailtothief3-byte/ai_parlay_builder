@@ -5,6 +5,12 @@ import math
 import pandas as pd
 
 
+def _numeric_series(df: pd.DataFrame, column: str, default: float = 0.0) -> pd.Series:
+    if column not in df.columns:
+        return pd.Series([default] * len(df), index=df.index, dtype=float)
+    return pd.to_numeric(df[column], errors="coerce").fillna(default)
+
+
 def american_to_decimal_profit_multiplier(price: float | None) -> float | None:
     if price is None or pd.isna(price):
         return None
@@ -103,12 +109,12 @@ def recommend_parlay_stake(
         }
 
     probabilities = (
-        pd.to_numeric(legs_df.get("model_prob"), errors="coerce")
+        _numeric_series(legs_df, "model_prob")
         if "model_prob" in legs_df.columns
-        else pd.to_numeric(legs_df.get("win_probability"), errors="coerce")
-    ).fillna(0.0)
-    implied_probs = pd.to_numeric(legs_df.get("implied_prob"), errors="coerce").fillna(0.0)
-    leg_units = pd.to_numeric(legs_df.get("recommended_units"), errors="coerce").fillna(0.0)
+        else _numeric_series(legs_df, "win_probability")
+    )
+    implied_probs = _numeric_series(legs_df, "implied_prob")
+    leg_units = _numeric_series(legs_df, "recommended_units")
 
     decimal_multipliers = compute_parlay_decimal_multipliers(legs_df)
 
@@ -136,7 +142,7 @@ def recommend_parlay_stake(
 
 def compute_parlay_decimal_multipliers(legs_df: pd.DataFrame) -> list[float]:
     decimal_multipliers = []
-    for price in pd.to_numeric(legs_df.get("price"), errors="coerce").tolist():
+    for price in _numeric_series(legs_df, "price").tolist():
         profit_multiplier = american_to_decimal_profit_multiplier(price)
         if profit_multiplier is None:
             continue
