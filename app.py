@@ -1088,6 +1088,8 @@ show_non_live_board_session_key = f"show_non_live_board_{sport_label}"
 show_non_live_edges_session_key = f"show_non_live_edges_{sport_label}"
 history_player_suggestion_session_key = f"history_player_suggestion_{sport_label}"
 history_market_suggestion_session_key = f"history_market_suggestion_{sport_label}"
+graded_market_filter_session_key = f"graded_market_filter_{sport_label}"
+graded_sort_by_session_key = f"graded_sort_by_{sport_label}"
 board_market_filter_session_key = f"board_market_filter_{sport_label}"
 board_sort_by_session_key = f"board_sort_by_{sport_label}"
 board_sort_ascending_session_key = f"board_sort_ascending_{sport_label}"
@@ -1110,6 +1112,8 @@ sync_bool_view_preference_state(sport_label, show_non_live_board_session_key, "s
 sync_bool_view_preference_state(sport_label, show_non_live_edges_session_key, "show_non_live_edges", False)
 sync_view_preference_state(sport_label, history_player_suggestion_session_key, "history_player_suggestion", "")
 sync_view_preference_state(sport_label, history_market_suggestion_session_key, "history_market_suggestion", "")
+sync_view_preference_state(sport_label, graded_market_filter_session_key, "graded_market_filter", "")
+sync_view_preference_state(sport_label, graded_sort_by_session_key, "graded_sort_by", "resolved_at")
 sync_view_preference_state(sport_label, board_market_filter_session_key, "board_market_filter", "")
 sync_view_preference_state(sport_label, board_sort_by_session_key, "board_sort_by", "pulled_at")
 sync_bool_view_preference_state(sport_label, board_sort_ascending_session_key, "board_sort_ascending", False)
@@ -1223,6 +1227,8 @@ with st.expander("View Preferences", expanded=False):
     view_pref_col2.write(f"Demo Parlay Lab: `{get_view_preference(sport_label, 'demo_parlay_view_mode', 'Compact')}`")
     view_pref_col2.write(f"History Player Suggestion: `{get_view_preference(sport_label, 'history_player_suggestion', '') or 'None'}`")
     view_pref_col2.write(f"History Market Suggestion: `{get_view_preference(sport_label, 'history_market_suggestion', '') or 'None'}`")
+    view_pref_col2.write(f"Graded Market Filter: `{get_view_preference(sport_label, 'graded_market_filter', '') or 'Any'}`")
+    view_pref_col2.write(f"Graded Sort By: `{get_view_preference(sport_label, 'graded_sort_by', 'resolved_at')}`")
     view_pref_col2.write(f"Demo Legs: `{get_view_preference(sport_label, 'demo_legs', '3')}`")
     view_pref_col2.write(f"Demo Min Confidence: `{get_view_preference(sport_label, 'demo_min_confidence', '70')}`")
     view_pref_col2.write(f"Demo Style: `{get_view_preference(sport_label, 'demo_parlay_style', 'Safe')}`")
@@ -1240,6 +1246,8 @@ with st.expander("View Preferences", expanded=False):
         st.session_state[show_non_live_edges_session_key] = False
         st.session_state[history_player_suggestion_session_key] = ""
         st.session_state[history_market_suggestion_session_key] = ""
+        st.session_state[graded_market_filter_session_key] = ""
+        st.session_state[graded_sort_by_session_key] = "resolved_at"
         st.session_state[edge_market_filter_session_key] = ""
         st.session_state[edge_sort_by_session_key] = "confidence"
         st.session_state[edge_sort_ascending_session_key] = False
@@ -2523,14 +2531,20 @@ with tab5:
         graded_market_filter = graded_filter_col1.selectbox(
             "Graded market filter",
             [""] + sorted(graded_df["market"].dropna().astype(str).unique().tolist()),
-            key="graded_market_filter",
+            key=graded_market_filter_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, graded_market_filter_session_key, "graded_market_filter"),
         )
         graded_player_filter = graded_filter_col2.text_input("Graded player search", key="graded_player_filter")
         graded_sort_by = graded_filter_col3.selectbox(
             "Graded sort by",
             [col for col in ["resolved_at", "profit_units", "edge", "model_prob", "confidence"] if col in graded_df.columns],
-            key="graded_sort_by",
+            key=graded_sort_by_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, graded_sort_by_session_key, "graded_sort_by"),
         )
+        persist_preference_if_changed(sport_label, "graded_market_filter", graded_market_filter, "")
+        persist_preference_if_changed(sport_label, "graded_sort_by", graded_sort_by, "resolved_at")
         graded_df = filter_dataframe(
             graded_df,
             market_key=graded_market_filter,
