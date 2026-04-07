@@ -830,6 +830,18 @@ def sync_typed_view_preference_state(
         st.session_state[session_key] = default
 
 
+def sync_bool_view_preference_state(
+    sport_label: str,
+    session_key: str,
+    preference_key: str,
+    default: bool,
+) -> None:
+    if session_key in st.session_state:
+        return
+    saved_value = get_view_preference(sport_label, preference_key, str(default))
+    st.session_state[session_key] = str(saved_value).strip().lower() == "true"
+
+
 def persist_view_preference_from_session(sport_label: str, session_key: str, preference_key: str) -> None:
     save_view_preference(sport_label, preference_key, str(st.session_state.get(session_key, "Compact")))
 
@@ -1062,6 +1074,11 @@ board_view_session_key = f"board_view_mode_{sport_label}"
 edge_view_session_key = f"edge_view_mode_{sport_label}"
 parlay_view_session_key = f"parlay_view_mode_{sport_label}"
 demo_parlay_view_session_key = f"demo_parlay_view_mode_{sport_label}"
+board_market_filter_session_key = f"board_market_filter_{sport_label}"
+board_watchlist_only_session_key = f"board_watchlist_only_{sport_label}"
+edge_market_filter_session_key = f"edge_market_filter_{sport_label}"
+edge_watchlist_only_session_key = f"edge_watchlist_only_{sport_label}"
+edge_alerts_only_session_key = f"edge_alerts_only_{sport_label}"
 live_min_conf_session_key = f"live_min_conf_{sport_label}"
 live_legs_session_key = f"live_legs_{sport_label}"
 demo_legs_session_key = f"demo_legs_{sport_label}"
@@ -1071,6 +1088,11 @@ sync_view_preference_state(sport_label, board_view_session_key, "board_view_mode
 sync_view_preference_state(sport_label, edge_view_session_key, "edge_view_mode", "Compact")
 sync_view_preference_state(sport_label, parlay_view_session_key, "parlay_view_mode", "Compact")
 sync_view_preference_state(sport_label, demo_parlay_view_session_key, "demo_parlay_view_mode", "Compact")
+sync_view_preference_state(sport_label, board_market_filter_session_key, "board_market_filter", "")
+sync_bool_view_preference_state(sport_label, board_watchlist_only_session_key, "board_watchlist_only", False)
+sync_view_preference_state(sport_label, edge_market_filter_session_key, "edge_market_filter", "")
+sync_bool_view_preference_state(sport_label, edge_watchlist_only_session_key, "edge_watchlist_only", False)
+sync_bool_view_preference_state(sport_label, edge_alerts_only_session_key, "edge_alerts_only", False)
 sync_typed_view_preference_state(sport_label, live_legs_session_key, "live_legs", 3, int)
 sync_typed_view_preference_state(sport_label, live_min_conf_session_key, "live_min_confidence", 65, int)
 sync_typed_view_preference_state(sport_label, demo_legs_session_key, "demo_legs", 3, int)
@@ -1155,7 +1177,12 @@ with st.expander("View Preferences", expanded=False):
     view_pref_col1, view_pref_col2 = st.columns(2)
     view_pref_col1.write(f"Board Type: `{get_view_preference(sport_label, 'board_type', 'Sportsbook')}`")
     view_pref_col1.write(f"Live Board: `{get_view_preference(sport_label, 'board_view_mode', 'Compact')}`")
+    view_pref_col1.write(f"Board Market Filter: `{get_view_preference(sport_label, 'board_market_filter', '') or 'Any'}`")
+    view_pref_col1.write(f"Board Watchlist Only: `{get_view_preference(sport_label, 'board_watchlist_only', 'False')}`")
     view_pref_col1.write(f"Edge Scanner: `{get_view_preference(sport_label, 'edge_view_mode', 'Compact')}`")
+    view_pref_col1.write(f"Edge Market Filter: `{get_view_preference(sport_label, 'edge_market_filter', '') or 'Any'}`")
+    view_pref_col1.write(f"Edge Watchlist Only: `{get_view_preference(sport_label, 'edge_watchlist_only', 'False')}`")
+    view_pref_col1.write(f"Edge Alerts Only: `{get_view_preference(sport_label, 'edge_alerts_only', 'False')}`")
     view_pref_col1.write(f"Live Legs: `{get_view_preference(sport_label, 'live_legs', '3')}`")
     view_pref_col1.write(f"Live Min Confidence: `{get_view_preference(sport_label, 'live_min_confidence', '65')}`")
     view_pref_col2.write(f"Parlay Source: `{get_view_preference(sport_label, 'parlay_source', 'Live edges')}`")
@@ -1169,7 +1196,12 @@ with st.expander("View Preferences", expanded=False):
         st.session_state[board_type_session_key] = "Sportsbook"
         st.session_state[parlay_source_session_key] = "Live edges"
         st.session_state[board_view_session_key] = "Compact"
+        st.session_state[board_market_filter_session_key] = ""
+        st.session_state[board_watchlist_only_session_key] = False
         st.session_state[edge_view_session_key] = "Compact"
+        st.session_state[edge_market_filter_session_key] = ""
+        st.session_state[edge_watchlist_only_session_key] = False
+        st.session_state[edge_alerts_only_session_key] = False
         st.session_state[parlay_view_session_key] = "Compact"
         st.session_state[demo_parlay_view_session_key] = "Compact"
         st.session_state[live_legs_session_key] = 3
@@ -1668,7 +1700,9 @@ with tab1:
         board_market_filter = board_filter_col1.selectbox(
             "Market filter",
             [""] + sorted(display_board["market"].dropna().astype(str).unique().tolist()) if not display_board.empty else [""],
-            key="board_market_filter",
+            key=board_market_filter_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, board_market_filter_session_key, "board_market_filter"),
         )
         board_player_filter = board_filter_col2.text_input("Player search", key="board_player_filter")
         board_sort_by = board_filter_col3.selectbox(
@@ -1677,7 +1711,14 @@ with tab1:
             key="board_sort_by",
         )
         board_sort_ascending = board_filter_col4.checkbox("Ascending", value=False, key="board_sort_ascending")
-        board_watchlist_only = board_filter_col5.checkbox("Watchlist only", value=False, key="board_watchlist_only")
+        board_watchlist_only = board_filter_col5.checkbox(
+            "Watchlist only",
+            key=board_watchlist_only_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, board_watchlist_only_session_key, "board_watchlist_only"),
+        )
+        persist_preference_if_changed(sport_label, "board_market_filter", board_market_filter, "")
+        persist_preference_if_changed(sport_label, "board_watchlist_only", board_watchlist_only, False)
         display_board = filter_dataframe(
             display_board,
             market_key=board_market_filter,
@@ -1761,7 +1802,9 @@ with tab2:
         edge_market_filter = edge_filter_col1.selectbox(
             "Market filter",
             [""] + sorted(display_edges["market"].dropna().astype(str).unique().tolist()) if not display_edges.empty else [""],
-            key="edge_market_filter",
+            key=edge_market_filter_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, edge_market_filter_session_key, "edge_market_filter"),
         )
         edge_player_filter = edge_filter_col2.text_input("Player search", key="edge_player_filter")
         edge_sort_by = edge_filter_col3.selectbox(
@@ -1770,8 +1813,21 @@ with tab2:
             key="edge_sort_by",
         )
         edge_sort_ascending = edge_filter_col4.checkbox("Ascending", value=False, key="edge_sort_ascending")
-        edge_watchlist_only = edge_filter_col5.checkbox("Watchlist only", value=False, key="edge_watchlist_only")
-        edge_alerts_only = edge_filter_col6.checkbox("Alerts only", value=False, key="edge_alerts_only")
+        edge_watchlist_only = edge_filter_col5.checkbox(
+            "Watchlist only",
+            key=edge_watchlist_only_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, edge_watchlist_only_session_key, "edge_watchlist_only"),
+        )
+        edge_alerts_only = edge_filter_col6.checkbox(
+            "Alerts only",
+            key=edge_alerts_only_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, edge_alerts_only_session_key, "edge_alerts_only"),
+        )
+        persist_preference_if_changed(sport_label, "edge_market_filter", edge_market_filter, "")
+        persist_preference_if_changed(sport_label, "edge_watchlist_only", edge_watchlist_only, False)
+        persist_preference_if_changed(sport_label, "edge_alerts_only", edge_alerts_only, False)
         display_edges = filter_dataframe(
             display_edges,
             market_key=edge_market_filter,
