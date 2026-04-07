@@ -1688,6 +1688,32 @@ with tab3:
             render_empty_state("No demo parlay met the filters", "Adjust the demo confidence, leg count, or style to widen the candidate pool.", tone="warning")
         else:
             demo_parlay_display = prefer_player_display(annotate_player_display(parlay))
+            demo_parlay_display = demo_parlay_display[
+                [
+                    col for col in [
+                        "leg_rank",
+                        "sport",
+                        "player",
+                        "market",
+                        "pick",
+                        "line",
+                        "predicted_value",
+                        "confidence",
+                        "win_probability",
+                        "team",
+                        "opponent",
+                    ]
+                    if col in demo_parlay_display.columns
+                ]
+            ].copy()
+            demo_parlay_display = demo_parlay_display.rename(
+                columns={
+                    "predicted_value": "projection",
+                    "win_probability": "model_prob",
+                }
+            )
+            if "model_prob" in demo_parlay_display.columns:
+                demo_parlay_display["model_prob"] = (pd.to_numeric(demo_parlay_display["model_prob"], errors="coerce") * 100).round(2)
             st.dataframe(compact_numeric_table(demo_parlay_display), use_container_width=True)
             if st.button("Save Demo Ticket", use_container_width=True):
                 ticket_id = save_ticket(
