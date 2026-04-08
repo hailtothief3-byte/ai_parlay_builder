@@ -2342,6 +2342,81 @@ with tab5:
     journal_df = get_journal_entries(sport_label)
     bankroll_summary = build_bankroll_summary(journal_df, bankroll_amount)
     bankroll_kpis = build_bankroll_kpis(journal_df, bankroll_amount)
+    ticket_summary_df = get_ticket_summary_with_grades(sport_label)
+    results_status_rows = [
+        {
+            "Workflow": "Tracked picks",
+            "Status": "Ready" if not tracked_df.empty else "Pending",
+            "Detail": f"{len(tracked_df)} tracked" if not tracked_df.empty else "Save live edges for grading to begin this queue.",
+        },
+        {
+            "Workflow": "Settlement queue",
+            "Status": "Needs action" if not unresolved_tracked_df.empty else "Clear",
+            "Detail": (
+                f"{len(unresolved_tracked_df)} open tracked picks waiting for grading or auto-settle."
+                if not unresolved_tracked_df.empty
+                else "No tracked picks are currently waiting for settlement."
+            ),
+        },
+        {
+            "Workflow": "Saved tickets",
+            "Status": "Ready" if not ticket_summary_df.empty else "Pending",
+            "Detail": (
+                f"{len(ticket_summary_df)} saved tickets available for review."
+                if not ticket_summary_df.empty
+                else "Save a ticket from Parlay Lab to unlock ticket comparison and grading views."
+            ),
+        },
+        {
+            "Workflow": "Bankroll journal",
+            "Status": "Ready" if not journal_df.empty else "Pending",
+            "Detail": (
+                f"{len(journal_df)} journal entries available for bankroll tracking."
+                if not journal_df.empty
+                else "Log a manual bet or save a tracked ticket with bankroll tracking to start this journal."
+            ),
+        },
+    ]
+
+    st.markdown("### Workflow Status")
+    status_tones = {
+        "Ready": {"bg": "#e8f7ef", "fg": "#157347", "border": "#b7e4c7"},
+        "Pending": {"bg": "#f7f4ea", "fg": "#8a6d1d", "border": "#ead9a7"},
+        "Needs action": {"bg": "#fbeaea", "fg": "#b42318", "border": "#f3c4c4"},
+        "Clear": {"bg": "#edf4ff", "fg": "#1d4ed8", "border": "#c7dbff"},
+    }
+    status_cols = st.columns(len(results_status_rows))
+    for idx, row in enumerate(results_status_rows):
+        tone = status_tones.get(row["Status"], status_tones["Pending"])
+        status_cols[idx].markdown(
+            f"""
+            <div style="
+                border:1px solid {tone['border']};
+                border-radius:18px;
+                padding:16px 16px 14px 16px;
+                background:#ffffffcc;
+                min-height:146px;
+            ">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                    <div style="font-weight:700;color:#17324d;font-size:1rem;">{row['Workflow']}</div>
+                    <span style="
+                        background:{tone['bg']};
+                        color:{tone['fg']};
+                        border:1px solid {tone['border']};
+                        border-radius:999px;
+                        padding:4px 10px;
+                        font-size:0.78rem;
+                        font-weight:700;
+                        white-space:nowrap;
+                    ">{row['Status']}</span>
+                </div>
+                <div style="margin-top:12px;color:#526273;font-size:0.93rem;line-height:1.45;">
+                    {row['Detail']}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
     metric_col1.metric("Tracked Picks", f"{len(tracked_df)}")
