@@ -40,6 +40,7 @@ from services.results_service import (
 )
 from services.research import ResearchService
 from services.settings_manager import reload_runtime_modules, upsert_env_values
+from services.smart_pick_service import score_smart_picks
 from services.stats_service import (
     build_stats_template,
     get_latest_stats_snapshots,
@@ -1144,6 +1145,84 @@ def build_expanded_edge_display(df: pd.DataFrame) -> pd.DataFrame:
     return prettify_table_headers(display[fallback_columns].copy())
 
 
+def build_smart_pick_display(df: pd.DataFrame, top_n: int = 8) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    display = prefer_player_display(annotate_player_display(df.copy())).head(top_n)
+    if "market" in display.columns:
+        display["market"] = display["market"].map(prettify_market_label)
+    display["bet"] = display.apply(format_bet_label, axis=1)
+    if "smart_expected_win_rate" in display.columns:
+        display["smart_expected_win_rate"] = (pd.to_numeric(display["smart_expected_win_rate"], errors="coerce") * 100).round(1)
+    if "smart_history_hit_rate" in display.columns:
+        display["smart_history_hit_rate"] = (pd.to_numeric(display["smart_history_hit_rate"], errors="coerce") * 100).round(1)
+    if "edge" in display.columns:
+        display["edge"] = (pd.to_numeric(display["edge"], errors="coerce") * 100).round(1)
+
+    ordered_columns = [
+        "player",
+        "player_team",
+        "bet",
+        "sportsbook",
+        "smart_tier",
+        "smart_score",
+        "smart_expected_win_rate",
+        "smart_history_hit_rate",
+        "edge",
+        "confidence",
+        "smart_summary",
+    ]
+    fallback_columns = [col for col in ordered_columns if col in display.columns]
+    cleaned = display[fallback_columns].copy()
+    cleaned = prettify_table_headers(cleaned)
+    return cleaned.rename(
+        columns={
+            "smart_tier": "Smart Tier",
+            "smart_score": "Smart Score",
+            "smart_expected_win_rate": "Expected Win %",
+            "smart_history_hit_rate": "History Hit %",
+            "smart_summary": "Why It Surfaced",
+        }
+    )
+
+
+def render_smart_pick_section(
+    scored_df: pd.DataFrame,
+    history_summary: dict[str, float | int],
+    title: str,
+    body: str,
+    top_n: int = 8,
+) -> None:
+    st.markdown(f"### {title}")
+    st.caption(body)
+
+    history_picks = int(history_summary.get("history_picks", 0) or 0)
+    overall_hit_rate = float(history_summary.get("overall_hit_rate", 0.0) or 0.0)
+    overall_roi = float(history_summary.get("overall_roi_per_pick", 0.0) or 0.0)
+
+    summary_col1, summary_col2, summary_col3 = st.columns(3)
+    summary_col1.metric("History picks", f"{history_picks}")
+    summary_col2.metric("Historical hit rate", f"{overall_hit_rate * 100:.1f}%")
+    summary_col3.metric("Units per pick", f"{overall_roi:+.2f}")
+
+    if scored_df.empty:
+        render_empty_state(
+            "No smart picks yet",
+            "We need live candidates before the smart scoring engine can rank anything.",
+            tone="info",
+        )
+        return
+
+    smart_display = build_smart_pick_display(scored_df, top_n=top_n)
+    st.dataframe(style_signal_table(compact_numeric_table(smart_display)), use_container_width=True, hide_index=True)
+
+    if history_picks <= 0:
+        st.info("Smart scoring is currently leaning on live model edge and confidence. Track and grade more picks to unlock stronger historical weighting.")
+    elif history_picks < 12:
+        st.info("Smart scoring is live, but the history sample is still small. As more graded picks accumulate, market and sportsbook memory will become more reliable.")
+
+
 def build_watchlist_option_labels(df: pd.DataFrame) -> dict[str, int]:
     option_labels = {}
     for idx, row in df.iterrows():
@@ -2172,6 +2251,7 @@ with tab0:
     overview_tracked = get_tracked_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
     overview_unresolved_tracked = get_unresolved_tracked_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
     overview_graded = get_graded_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
+    overview_smart_edges, overview_smart_summary = score_smart_picks(overview_edges, overview_graded)
     overview_journal = get_journal_entries(sport_label)
     overview_bankroll = build_bankroll_summary(overview_journal, bankroll_amount)
     overview_kpis = build_bankroll_kpis(overview_journal, bankroll_amount)
@@ -2305,6 +2385,14 @@ with tab0:
     overview_col6.metric("Open Risk", f"${overview_bankroll['open_risk']}")
     overview_col7.metric("ROI", f"{overview_kpis['roi'] * 100:.2f}%")
     overview_col8.metric("Graded Picks", f"{len(overview_graded)}")
+
+    render_smart_pick_section(
+        scored_df=overview_smart_edges,
+        history_summary=overview_smart_summary,
+        title="Smart Pick Engine",
+        body="This ranking blends live model edge with your graded history by market, sportsbook, and confidence band so the app can start learning what has actually worked.",
+        top_n=6,
+    )
 
     left_col, right_col = st.columns(2)
     with left_col:
@@ -2506,6 +2594,8 @@ with tab2:
         )
         edge_df = annotate_watchlist_movement(edge_df, sport_label)
         edge_df = annotate_player_display(edge_df)
+        edge_graded_history = get_graded_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
+        edge_df, edge_smart_summary = score_smart_picks(edge_df, edge_graded_history)
         edge_view_mode = st.radio(
             "Edge view",
             ["Compact", "Expanded"],
@@ -2534,7 +2624,7 @@ with tab2:
         edge_player_filter = edge_filter_col2.text_input("Player search", key="edge_player_filter")
         edge_sort_by = edge_filter_col3.selectbox(
             "Sort by",
-            [col for col in ["confidence", "edge", "model_prob", "recommended_stake", "player"] if col in display_edges.columns] if not display_edges.empty else [""],
+            [col for col in ["smart_score", "confidence", "edge", "model_prob", "recommended_stake", "player"] if col in display_edges.columns] if not display_edges.empty else [""],
             key=edge_sort_by_session_key,
             on_change=persist_view_preference_from_session,
             args=(sport_label, edge_sort_by_session_key, "edge_sort_by"),
@@ -2579,6 +2669,13 @@ with tab2:
             render_empty_state("No rows match this edge view", "Try relaxing the filters, thresholds, or watchlist-only alert view.", tone="info")
         else:
             display_edges["watchlist"] = display_edges["is_watchlisted"].map(lambda value: "Yes" if value else "")
+            render_smart_pick_section(
+                scored_df=display_edges,
+                history_summary=edge_smart_summary,
+                title="Smart-Ranked Edges",
+                body="These candidates are ordered with the same smart-pick engine so you can compare live signals against your actual graded history before saving or tracking them.",
+                top_n=8,
+            )
             edge_display = (
                 build_clean_edge_display(display_edges)
                 if edge_view_mode == "Compact"
@@ -2598,7 +2695,7 @@ with tab2:
         )
 
         st.markdown("### Best Prop Cards")
-        cards = build_prop_cards(display_edges, top_n=10)
+        cards = build_prop_cards(display_edges.sort_values(["smart_score", "confidence", "edge"], ascending=False), top_n=10)
 
         for card in cards:
             render_prop_card(card)
@@ -2684,6 +2781,8 @@ with tab3:
             )
             edge_df = annotate_watchlist_movement(edge_df, sport_label)
             edge_df = annotate_player_display(edge_df)
+            parlay_graded_history = get_graded_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
+            edge_df, _ = score_smart_picks(edge_df, parlay_graded_history)
             parlay_view_mode = st.radio(
                 "Parlay table view",
                 ["Compact", "Expanded"],
@@ -2726,7 +2825,7 @@ with tab3:
                 candidates = get_watchlist_alerts(candidates, sport_label)
             else:
                 candidates = candidates[candidates["confidence"] >= min_confidence].copy()
-                candidates = candidates.sort_values(["confidence", "edge"], ascending=False)
+                candidates = candidates.sort_values(["smart_score", "confidence", "edge"], ascending=False)
 
             st.info(
                 (
