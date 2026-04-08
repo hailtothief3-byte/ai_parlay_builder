@@ -40,6 +40,7 @@ from services.results_service import (
 )
 from services.research import ResearchService
 from services.settings_manager import reload_runtime_modules, upsert_env_values
+from services.smart_parlay_profile_service import build_smart_parlay_profiles
 from services.smart_pick_service import build_smart_learning_tables, score_smart_picks
 from services.stats_service import (
     build_stats_template,
@@ -1250,6 +1251,45 @@ def format_source_label(value: str) -> str:
     return raw.replace("_", " ").title()
 
 
+def render_smart_parlay_profile_panel(
+    profile: dict[str, object],
+    title: str,
+    mode_label: str,
+    current_values: dict[str, object],
+    apply_button_key: str,
+    apply_callback,
+) -> None:
+    st.markdown(f"### {title}")
+    sample_size = int(profile.get("sample_size", 0) or 0)
+    reason = str(profile.get("reason") or "")
+
+    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+    if "recommended_style" in profile:
+        metric_col1.metric("Recommended style", str(profile.get("recommended_style") or "Balanced"))
+    else:
+        metric_col1.metric("Recommended legs", str(profile.get("recommended_legs") or current_values.get("legs") or 3))
+    metric_col2.metric("Recommended legs", str(profile.get("recommended_legs") or current_values.get("legs") or 3))
+    metric_col3.metric("Min confidence", str(profile.get("recommended_min_confidence") or current_values.get("min_confidence") or 65))
+    exposure_key = "recommended_same_team" if "recommended_same_team" in profile else "recommended_same_player"
+    exposure_label = "Same team" if exposure_key == "recommended_same_team" else "Same player"
+    exposure_allowed = bool(profile.get(exposure_key, current_values.get("allow_overlap", False)))
+    metric_col4.metric(exposure_label, "Allowed" if exposure_allowed else "Blocked")
+
+    if str(profile.get("recommended_target_label") or "").strip():
+        st.caption(f"Preferred DFS destination: {profile['recommended_target_label']}")
+    if reason:
+        st.info(reason)
+    if sample_size <= 0:
+        st.caption(f"{mode_label} profile is currently using defaults until ticket history grows.")
+    else:
+        st.caption(f"{mode_label} profile is informed by {sample_size} historical tickets.")
+
+    if st.button("Apply Smart Profile", key=apply_button_key, use_container_width=False):
+        apply_callback(profile)
+        st.success(f"Applied the current smart {mode_label.lower()} profile.")
+        st.rerun()
+
+
 def build_watchlist_option_labels(df: pd.DataFrame) -> dict[str, int]:
     option_labels = {}
     for idx, row in df.iterrows():
@@ -1861,9 +1901,11 @@ edge_watchlist_only_session_key = f"edge_watchlist_only_{sport_label}"
 edge_alerts_only_session_key = f"edge_alerts_only_{sport_label}"
 live_min_conf_session_key = f"live_min_conf_{sport_label}"
 live_legs_session_key = f"live_legs_{sport_label}"
+live_same_player_session_key = f"live_same_player_{sport_label}"
 demo_legs_session_key = f"demo_legs_{sport_label}"
 demo_min_conf_session_key = f"demo_min_conf_{sport_label}"
 demo_style_session_key = f"demo_style_{sport_label}"
+demo_same_team_session_key = f"demo_same_team_{sport_label}"
 sync_view_preference_state(sport_label, board_view_session_key, "board_view_mode", "Compact")
 sync_view_preference_state(sport_label, edge_view_session_key, "edge_view_mode", "Compact")
 sync_view_preference_state(sport_label, parlay_view_session_key, "parlay_view_mode", "Compact")
@@ -1885,9 +1927,12 @@ sync_bool_view_preference_state(sport_label, edge_watchlist_only_session_key, "e
 sync_bool_view_preference_state(sport_label, edge_alerts_only_session_key, "edge_alerts_only", False)
 sync_typed_view_preference_state(sport_label, live_legs_session_key, "live_legs", 3, int)
 sync_typed_view_preference_state(sport_label, live_min_conf_session_key, "live_min_confidence", 65, int)
+sync_bool_view_preference_state(sport_label, live_same_player_session_key, "live_same_player", False)
 sync_typed_view_preference_state(sport_label, demo_legs_session_key, "demo_legs", 3, int)
 sync_typed_view_preference_state(sport_label, demo_min_conf_session_key, "demo_min_confidence", 70, int)
 sync_view_preference_state(sport_label, demo_style_session_key, "demo_parlay_style", "Safe")
+sync_bool_view_preference_state(sport_label, demo_same_team_session_key, "demo_same_team", False)
+smart_parlay_profiles = build_smart_parlay_profiles(get_ticket_summary_with_grades(sport_label))
 render_shell_header(sport_label, sport_provider, board_type, sync_enabled, last_sync)
 if not sync_enabled:
     st.info("This sport is routed through the esports provider slot. Demo/live-seeded views work now; external esports API integration is the next step.")
@@ -2849,7 +2894,34 @@ with tab3:
             )
             persist_preference_if_changed(sport_label, "live_legs", legs, 3)
             persist_preference_if_changed(sport_label, "live_min_confidence", min_confidence, 65)
-            allow_same_player = st.checkbox("Allow multiple picks on the same player", value=False)
+            allow_same_player = st.checkbox(
+                "Allow multiple picks on the same player",
+                key=live_same_player_session_key,
+                on_change=persist_view_preference_from_session,
+                args=(sport_label, live_same_player_session_key, "live_same_player"),
+            )
+            persist_preference_if_changed(sport_label, "live_same_player", allow_same_player, False)
+            render_smart_parlay_profile_panel(
+                profile=smart_parlay_profiles["live"],
+                title="Smart Live Parlay Profile",
+                mode_label="Live",
+                current_values={
+                    "legs": legs,
+                    "min_confidence": min_confidence,
+                    "allow_overlap": allow_same_player,
+                },
+                apply_button_key=f"apply_live_smart_profile_{sport_label}",
+                apply_callback=lambda profile: (
+                    st.session_state.__setitem__(live_legs_session_key, int(profile.get("recommended_legs", legs))),
+                    st.session_state.__setitem__(live_min_conf_session_key, int(profile.get("recommended_min_confidence", min_confidence))),
+                    st.session_state.__setitem__(live_same_player_session_key, bool(profile.get("recommended_same_player", allow_same_player))),
+                ),
+            )
+            if is_dfs and str(smart_parlay_profiles["dfs"].get("recommended_target_label") or "").strip():
+                st.caption(
+                    f"Smart DFS destination preference: {smart_parlay_profiles['dfs']['recommended_target_label']}. "
+                    f"{smart_parlay_profiles['dfs']['reason']}"
+                )
 
             candidates = edge_df.copy()
             candidates = candidates[candidates["coverage_status"] == "Live"].copy()
@@ -3037,7 +3109,12 @@ with tab3:
             on_change=persist_view_preference_from_session,
             args=(sport_label, demo_min_conf_session_key, "demo_min_confidence"),
         )
-        allow_same_team = st.checkbox("Allow same-team demo legs", value=False)
+        allow_same_team = st.checkbox(
+            "Allow same-team demo legs",
+            key=demo_same_team_session_key,
+            on_change=persist_view_preference_from_session,
+            args=(sport_label, demo_same_team_session_key, "demo_same_team"),
+        )
         style = st.selectbox(
             "Parlay style",
             ["Safe", "Balanced", "Aggressive"],
@@ -3048,6 +3125,29 @@ with tab3:
         persist_preference_if_changed(sport_label, "demo_legs", legs, 3)
         persist_preference_if_changed(sport_label, "demo_min_confidence", min_confidence, 70)
         persist_preference_if_changed(sport_label, "demo_parlay_style", style, "Safe")
+        persist_preference_if_changed(sport_label, "demo_same_team", allow_same_team, False)
+        render_smart_parlay_profile_panel(
+            profile=smart_parlay_profiles["demo"],
+            title="Smart Demo Parlay Profile",
+            mode_label="Demo",
+            current_values={
+                "legs": legs,
+                "min_confidence": min_confidence,
+                "allow_overlap": allow_same_team,
+            },
+            apply_button_key=f"apply_demo_smart_profile_{sport_label}",
+            apply_callback=lambda profile: (
+                st.session_state.__setitem__(demo_legs_session_key, int(profile.get("recommended_legs", legs))),
+                st.session_state.__setitem__(demo_min_conf_session_key, int(profile.get("recommended_min_confidence", min_confidence))),
+                st.session_state.__setitem__(demo_style_session_key, str(profile.get("recommended_style", style))),
+                st.session_state.__setitem__(demo_same_team_session_key, bool(profile.get("recommended_same_team", allow_same_team))),
+            ),
+        )
+        if is_dfs and str(smart_parlay_profiles["dfs"].get("recommended_target_label") or "").strip():
+            st.caption(
+                f"Smart DFS destination preference: {smart_parlay_profiles['dfs']['recommended_target_label']}. "
+                f"{smart_parlay_profiles['dfs']['reason']}"
+            )
         demo_ticket_name = st.text_input("Demo ticket name", value=f"{sport_label} Demo Ticket", key="demo_ticket_name")
         demo_ticket_notes = st.text_input("Demo ticket notes", key="demo_ticket_notes")
 
