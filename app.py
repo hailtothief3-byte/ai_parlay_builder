@@ -652,6 +652,8 @@ def prettify_table_headers(df: pd.DataFrame) -> pd.DataFrame:
         return df
     header_map = {
         "leg_rank": "Leg",
+        "summary": "Summary",
+        "leg_summary": "Summary",
         "player": "Player",
         "player_team": "Team",
         "sport": "Sport",
@@ -2101,12 +2103,23 @@ with tab3:
                 if "market" in parlay_display.columns:
                     parlay_display["market"] = parlay_display["market"].map(prettify_market_label)
                 parlay_display["bet"] = parlay_display.apply(format_bet_label, axis=1)
+                parlay_display["leg_summary"] = parlay_display.apply(
+                    lambda row: " | ".join(
+                        part
+                        for part in [
+                            str(row.get("player", "")).strip(),
+                            str(row.get("player_team", "")).strip(),
+                            str(row.get("bet", "")).strip(),
+                        ]
+                        if part and part.lower() != "nan"
+                    ),
+                    axis=1,
+                )
+                parlay_display = parlay_display.rename(columns={"leg_summary": "summary"})
                 live_parlay_columns = (
                     [
                         "leg_rank",
-                        "player",
-                        "player_team",
-                        "bet",
+                        "summary",
                         "sportsbook",
                         "projection",
                         "model_prob",
@@ -2238,6 +2251,18 @@ with tab3:
             if "market" in demo_parlay_display.columns:
                 demo_parlay_display["market"] = demo_parlay_display["market"].map(prettify_market_label)
             demo_parlay_display["bet"] = demo_parlay_display.apply(format_bet_label, axis=1)
+            demo_parlay_display["leg_summary"] = demo_parlay_display.apply(
+                lambda row: " | ".join(
+                    part
+                    for part in [
+                        str(row.get("player", "")).strip(),
+                        str(row.get("team", "")).strip(),
+                        str(row.get("bet", "")).strip(),
+                    ]
+                    if part and part.lower() != "nan"
+                ),
+                axis=1,
+            )
             demo_parlay_view_mode = st.radio(
                 "Demo parlay table view",
                 ["Compact", "Expanded"],
@@ -2252,12 +2277,10 @@ with tab3:
                         [
                             "leg_rank",
                             "sport",
-                            "player",
-                            "bet",
+                            "leg_summary",
                             "predicted_value",
                             "confidence",
                             "win_probability",
-                            "team",
                         ]
                         if demo_parlay_view_mode == "Compact"
                         else [
@@ -2282,6 +2305,7 @@ with tab3:
                 columns={
                     "predicted_value": "projection",
                     "win_probability": "model_prob",
+                    "leg_summary": "summary",
                 }
             )
             if "model_prob" in demo_parlay_display.columns:
