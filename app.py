@@ -2407,7 +2407,11 @@ with tab5:
         st.rerun()
 
     if journal_df.empty:
-        render_empty_state("No bankroll journal entries yet", "Log a manual bet or save a ticket with bankroll tracking to start building this journal.", tone="neutral")
+        render_empty_state(
+            "No bankroll journal entries yet",
+            "Log a manual bet or save a ticket with bankroll tracking to start building this journal. Journal summaries, settlement actions, and bankroll trend details will appear here after your first entry.",
+            tone="neutral",
+        )
     else:
         if st.button("Auto-Sync Ticket Journal Entries", use_container_width=True):
             journal_sync_result = sync_ticket_journal_entries(sport_label)
@@ -2512,7 +2516,11 @@ with tab5:
 
     st.markdown("### Ungraded Tracked Picks")
     if ungraded_df.empty:
-        render_empty_state("No ungraded tracked picks", "Save live edges for grading or wait for new tracked picks to settle into this queue.", tone="neutral")
+        render_empty_state(
+            "No ungraded tracked picks",
+            "Save live edges for grading or wait for new tracked picks to settle into this queue. Resolution controls and tracked-pick review rows will appear here after your first tracked pick.",
+            tone="neutral",
+        )
     else:
         st.dataframe(compact_numeric_table(ungraded_df.head(100)), use_container_width=True)
         st.download_button(
@@ -2622,7 +2630,11 @@ with tab5:
     st.markdown("### Saved Tickets")
     ticket_summary_df = get_ticket_summary_with_grades(sport_label)
     if ticket_summary_df.empty:
-        render_empty_state("No saved tickets yet", "Save a ticket from Parlay Lab to start comparing, grading, and tracking live slips here.", tone="neutral")
+        render_empty_state(
+            "No saved tickets yet",
+            "Save a ticket from Parlay Lab to start comparing, grading, and tracking live slips here. Ticket summaries, leg breakdowns, and model-vs-ticket comparison tools will appear here after your first saved ticket.",
+            tone="neutral",
+        )
     else:
         display_tickets = ticket_summary_df[
             [
