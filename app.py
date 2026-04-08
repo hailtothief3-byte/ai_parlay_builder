@@ -19,7 +19,7 @@ from services.dfs_slip_service import (
     get_dfs_slip_adapters,
     recommend_dfs_slip_adapter,
 )
-from services.analytics import build_calibration_summary, build_clv_backtest, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_sportsbook_summary
+from services.analytics import build_calibration_summary, build_clv_backtest, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary
 from services.board_service import get_latest_board
 from services.bankroll_service import annotate_stake_recommendations, recommend_parlay_stake
 from services.bankroll_journal_service import add_journal_entry, build_bankroll_kpis, build_bankroll_summary, get_journal_entries, settle_journal_entry, sync_ticket_journal_entries
@@ -3627,6 +3627,24 @@ with tab5:
             st.caption(
                 "This comparison uses graded picks only. As more smart-ranked picks settle, the signal here will become more reliable."
             )
+
+        cumulative_source_profit, rolling_source_hit_rate = build_true_source_timeseries(graded_df)
+        trend_tab1, trend_tab2 = st.tabs(["Cumulative Units", "Rolling Hit Rate"])
+        with trend_tab1:
+            if cumulative_source_profit.empty:
+                st.caption("Not enough resolved source history yet for a cumulative trend chart.")
+            else:
+                cumulative_chart = cumulative_source_profit.copy()
+                cumulative_chart.columns = [format_source_label(str(col)) for col in cumulative_chart.columns]
+                st.line_chart(cumulative_chart)
+        with trend_tab2:
+            if rolling_source_hit_rate.empty:
+                st.caption("Not enough resolved source history yet for a rolling hit-rate chart.")
+            else:
+                rolling_chart = rolling_source_hit_rate.copy()
+                rolling_chart.columns = [format_source_label(str(col)) for col in rolling_chart.columns]
+                st.line_chart(rolling_chart)
+                st.caption("Rolling hit rate uses the last 10 graded picks for each source.")
 
     if auto_settle_payload:
         recorded_at = str(auto_settle_payload.get("recorded_at") or "")

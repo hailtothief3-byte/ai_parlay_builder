@@ -196,6 +196,51 @@ def build_true_source_summary(backtest_df: pd.DataFrame) -> pd.DataFrame:
     return summary[summary["picks"] > 0]
 
 
+def build_true_source_timeseries(backtest_df: pd.DataFrame, rolling_window: int = 10) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if backtest_df.empty or "source" not in backtest_df.columns or "resolved_at" not in backtest_df.columns:
+        return pd.DataFrame(), pd.DataFrame()
+
+    working = backtest_df.copy()
+    working["resolved_at"] = pd.to_datetime(working["resolved_at"], errors="coerce")
+    working = working[working["resolved_at"].notna()].copy()
+    if working.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    working = working.sort_values("resolved_at")
+    working["resolved_day"] = working["resolved_at"].dt.floor("D")
+
+    daily_profit = (
+        working.groupby(["resolved_day", "source"], observed=False)
+        .agg(profit_units=("profit_units", "sum"))
+        .reset_index()
+    )
+    cumulative_profit = (
+        daily_profit.pivot(index="resolved_day", columns="source", values="profit_units")
+        .fillna(0.0)
+        .sort_index()
+        .cumsum()
+    )
+
+    rolling_frames: list[pd.DataFrame] = []
+    for source, source_df in working.groupby("source", observed=False):
+        source_df = source_df.sort_values("resolved_at").copy()
+        source_df["rolling_hit_rate"] = source_df["won"].rolling(window=rolling_window, min_periods=1).mean()
+        source_df["sample_number"] = range(1, len(source_df) + 1)
+        rolling_frames.append(
+            source_df[["resolved_at", "sample_number", "rolling_hit_rate"]].assign(source=source)
+        )
+
+    if not rolling_frames:
+        return cumulative_profit, pd.DataFrame()
+
+    rolling_hit_rate = pd.concat(rolling_frames, ignore_index=True)
+    rolling_hit_rate = (
+        rolling_hit_rate.pivot(index="resolved_at", columns="source", values="rolling_hit_rate")
+        .sort_index()
+    )
+    return cumulative_profit, rolling_hit_rate
+
+
 def build_ticket_benchmark_summary(graded_picks_df: pd.DataFrame, leg_count: int) -> dict[str, float | int | None]:
     if graded_picks_df.empty or leg_count <= 0:
         return {
