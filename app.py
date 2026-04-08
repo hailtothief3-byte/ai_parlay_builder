@@ -969,6 +969,9 @@ def prettify_table_headers(df: pd.DataFrame) -> pd.DataFrame:
         "model_prob": "Model %",
         "win_probability": "Model %",
         "sportsbook": "Sportsbook",
+        "commence_time": "Start",
+        "last_update": "Updated",
+        "coverage_status": "Coverage",
         "recommended_units": "Units",
         "recommended_stake": "Stake",
         "implied_prob": "Implied %",
@@ -989,6 +992,56 @@ def format_bet_label(row: pd.Series) -> str:
     return f"{pick} {line_text} {market}".strip()
 
 
+def format_live_board_timestamp(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "-"
+    raw = str(value).strip()
+    if not raw or raw.lower() == "none":
+        return "-"
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return raw
+    if getattr(parsed, "tzinfo", None) is not None:
+        parsed = parsed.tz_convert(None)
+    return parsed.strftime("%b %d, %I:%M %p").replace(" 0", " ")
+
+
+def format_live_board_price(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "-"
+    raw = str(value).strip()
+    if not raw or raw.lower() == "none":
+        return "-"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return raw
+    if numeric.is_integer():
+        odds = int(numeric)
+        return f"+{odds}" if odds > 0 else str(odds)
+    return f"{numeric:.2f}".rstrip("0").rstrip(".")
+
+
+def clean_live_board_display_values(df: pd.DataFrame) -> pd.DataFrame:
+    cleaned = df.copy()
+    for timestamp_col in ["commence_time", "last_update", "pulled_at"]:
+        if timestamp_col in cleaned.columns:
+            cleaned[timestamp_col] = cleaned[timestamp_col].map(format_live_board_timestamp)
+    if "price" in cleaned.columns:
+        cleaned["price"] = cleaned["price"].map(format_live_board_price)
+    if "coverage_status" in cleaned.columns:
+        cleaned["coverage_status"] = (
+            cleaned["coverage_status"]
+            .fillna("-")
+            .astype(str)
+            .str.replace("_", " ")
+            .str.title()
+        )
+    if "watchlist" in cleaned.columns:
+        cleaned["watchlist"] = cleaned["watchlist"].replace("", "-").fillna("-")
+    return cleaned.replace({"None": "-", "nan": "-", "NaT": "-"})
+
+
 def build_clean_live_board_display(df: pd.DataFrame) -> pd.DataFrame:
     display = prefer_player_display(annotate_player_display(df.copy()))
     if "market" in display.columns:
@@ -1006,7 +1059,7 @@ def build_clean_live_board_display(df: pd.DataFrame) -> pd.DataFrame:
         "watchlist",
     ]
     fallback_columns = [col for col in ordered_columns if col in display.columns]
-    cleaned = display[fallback_columns].copy()
+    cleaned = clean_live_board_display_values(display[fallback_columns].copy())
     return prettify_table_headers(cleaned)
 
 
@@ -1059,7 +1112,7 @@ def build_expanded_live_board_display(df: pd.DataFrame) -> pd.DataFrame:
         "watchlist",
     ]
     fallback_columns = [col for col in ordered_columns if col in display.columns]
-    return prettify_table_headers(display[fallback_columns].copy())
+    return prettify_table_headers(clean_live_board_display_values(display[fallback_columns].copy()))
 
 
 def build_expanded_edge_display(df: pd.DataFrame) -> pd.DataFrame:
@@ -1202,6 +1255,7 @@ theme_tokens = {
         "input_border": "#d6d0c2",
         "input_text": "#1f2937",
         "input_label": "#4b5563",
+        "top_control_label": "#374151",
         "expander_text": "#334155",
         "body_text": "#334155",
         "heading_text": "#1f2937",
@@ -1246,6 +1300,7 @@ theme_tokens = {
         "input_border": "#315b8f",
         "input_text": "#eaf4ff",
         "input_label": "#c9dcf3",
+        "top_control_label": "#deebfb",
         "expander_text": "#d7e8fa",
         "body_text": "#d8e7f7",
         "heading_text": "#f3f8ff",
@@ -1296,6 +1351,14 @@ header[data-testid="stHeader"] [role="button"]:hover,
     padding-top: 1.5rem;
     padding-bottom: 3rem;
     max-width: 1400px;
+}
+.top-select-label {
+    color: __TOP_CONTROL_LABEL__;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    margin-bottom: 0.35rem;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 .app-hero {
     padding: 1.5rem 1.6rem;
@@ -1604,6 +1667,7 @@ theme_css = (
     .replace("__INPUT_BORDER__", theme["input_border"])
     .replace("__INPUT_TEXT__", theme["input_text"])
     .replace("__INPUT_LABEL__", theme["input_label"])
+    .replace("__TOP_CONTROL_LABEL__", theme["top_control_label"])
     .replace("__EXPANDER_TEXT__", theme["expander_text"])
     .replace("__BODY_TEXT__", theme["body_text"])
     .replace("__HEADING_TEXT__", theme["heading_text"])
@@ -1617,33 +1681,42 @@ selector_col1, selector_col2, selector_col3 = st.columns([1.1, 0.95, 0.8])
 sport_labels = get_sport_labels()
 app_sport_session_key = "selected_sport_label"
 sync_view_preference_state("__app__", app_sport_session_key, "selected_sport_label", sport_labels[0])
-sport_label = selector_col1.selectbox(
-    "Sport",
-    sport_labels,
-    key=app_sport_session_key,
-    on_change=persist_view_preference_from_session,
-    args=("__app__", app_sport_session_key, "selected_sport_label"),
-)
+with selector_col1:
+    st.markdown('<div class="top-select-label">Sport</div>', unsafe_allow_html=True)
+    sport_label = st.selectbox(
+        "Sport",
+        sport_labels,
+        key=app_sport_session_key,
+        label_visibility="collapsed",
+        on_change=persist_view_preference_from_session,
+        args=("__app__", app_sport_session_key, "selected_sport_label"),
+    )
 persist_preference_if_changed("__app__", "selected_sport_label", sport_label, sport_labels[0])
 board_type_session_key = f"board_type_{sport_label}"
 parlay_source_session_key = f"parlay_source_{sport_label}"
 sync_view_preference_state(sport_label, board_type_session_key, "board_type", "Sportsbook")
 sync_view_preference_state(sport_label, parlay_source_session_key, "parlay_source", "Live edges")
-board_type = selector_col2.selectbox(
-    "Board Type",
-    ["Sportsbook", "DFS"],
-    key=board_type_session_key,
-    on_change=persist_view_preference_from_session,
-    args=(sport_label, board_type_session_key, "board_type"),
-)
+with selector_col2:
+    st.markdown('<div class="top-select-label">Board Type</div>', unsafe_allow_html=True)
+    board_type = st.selectbox(
+        "Board Type",
+        ["Sportsbook", "DFS"],
+        key=board_type_session_key,
+        label_visibility="collapsed",
+        on_change=persist_view_preference_from_session,
+        args=(sport_label, board_type_session_key, "board_type"),
+    )
 persist_preference_if_changed(sport_label, "board_type", board_type, "Sportsbook")
-theme_mode = selector_col3.selectbox(
-    "Theme",
-    ["Light", "Dark"],
-    key=theme_session_key,
-    on_change=persist_view_preference_from_session,
-    args=("__app__", theme_session_key, "theme_mode"),
-)
+with selector_col3:
+    st.markdown('<div class="top-select-label">Theme</div>', unsafe_allow_html=True)
+    theme_mode = st.selectbox(
+        "Theme",
+        ["Light", "Dark"],
+        key=theme_session_key,
+        label_visibility="collapsed",
+        on_change=persist_view_preference_from_session,
+        args=("__app__", theme_session_key, "theme_mode"),
+    )
 persist_preference_if_changed("__app__", "theme_mode", theme_mode, "Light")
 
 sport_config = get_sport_config(sport_label)
@@ -2381,7 +2454,11 @@ with tab1:
                 if board_view_mode == "Compact"
                 else build_expanded_live_board_display(display_board)
             )
-            st.dataframe(style_signal_table(compact_numeric_table(board_display)), use_container_width=True)
+            st.dataframe(
+                style_signal_table(compact_numeric_table(board_display)),
+                use_container_width=True,
+                hide_index=True,
+            )
             st.download_button(
                 "Export Live Board CSV",
                 data=display_board.to_csv(index=False),
