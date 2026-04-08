@@ -959,6 +959,8 @@ theme_tokens = {
         "hero_brand_border": "rgba(255,255,255,0.12)",
         "hero_pill_bg": "rgba(255,255,255,0.08)",
         "hero_pill_border": "rgba(255,255,255,0.09)",
+        "header_bg": "rgba(252, 251, 248, 0.88)",
+        "header_border": "rgba(31, 41, 55, 0.06)",
         "hero_text": "#f8fafc",
         "hero_subtitle": "rgba(248, 250, 252, 0.84)",
         "eyebrow": "#f4a261",
@@ -998,6 +1000,8 @@ theme_tokens = {
         "hero_brand_border": "rgba(125, 211, 252, 0.22)",
         "hero_pill_bg": "rgba(10, 22, 40, 0.64)",
         "hero_pill_border": "rgba(96, 165, 250, 0.20)",
+        "header_bg": "rgba(8, 17, 31, 0.78)",
+        "header_border": "rgba(96, 165, 250, 0.10)",
         "hero_text": "#edf6ff",
         "hero_subtitle": "rgba(208, 225, 244, 0.88)",
         "eyebrow": "#7dd3fc",
@@ -1041,6 +1045,13 @@ base_css = """
 <style>
 .stApp {
     background: __APP_BG__;
+}
+header[data-testid="stHeader"] {
+    background: __HEADER_BG__;
+    border-bottom: 1px solid __HEADER_BORDER__;
+}
+[data-testid="stToolbar"] {
+    background: transparent;
 }
 .block-container {
     padding-top: 1.5rem;
@@ -1286,6 +1297,8 @@ details summary,
 """
 theme_css = (
     base_css.replace("__APP_BG__", theme["app_bg"])
+    .replace("__HEADER_BG__", theme["header_bg"])
+    .replace("__HEADER_BORDER__", theme["header_border"])
     .replace("__HERO_BG__", theme["hero_bg"])
     .replace("__HERO_BRAND_BG__", theme["hero_brand_bg"])
     .replace("__HERO_BRAND_BORDER__", theme["hero_brand_border"])
