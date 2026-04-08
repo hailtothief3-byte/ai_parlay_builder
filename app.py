@@ -2827,12 +2827,63 @@ with tab5:
             key="selected_ticket_id",
         )
         selected_legs = get_ticket_legs(int(selected_ticket_id))
-        if not selected_legs.empty:
-            st.dataframe(compact_numeric_table(selected_legs), use_container_width=True)
+        selected_ticket_meta = ticket_summary_df[ticket_summary_df["ticket_id"] == selected_ticket_id].head(1)
+        if not selected_ticket_meta.empty:
+            ticket_row = selected_ticket_meta.iloc[0]
+            snapshot_col1, snapshot_col2, snapshot_col3, snapshot_col4 = st.columns(4)
+            snapshot_col1.metric("Ticket", str(ticket_row["name"]))
+            snapshot_col2.metric("Source", str(ticket_row["source"]).replace("_", " ").title())
+            snapshot_col3.metric("Legs", str(ticket_row["leg_count"]))
+            snapshot_col4.metric("Status", str(ticket_row["ticket_status_live"]).replace("_", " ").title())
 
-            selected_ticket_meta = ticket_summary_df[ticket_summary_df["ticket_id"] == selected_ticket_id].head(1)
+            snapshot_col5, snapshot_col6, snapshot_col7, snapshot_col8 = st.columns(4)
+            snapshot_col5.metric("Avg confidence", f"{float(ticket_row['avg_confidence']):.1f}" if pd.notna(ticket_row["avg_confidence"]) else "N/A")
+            snapshot_col6.metric("Avg model %", f"{float(ticket_row['avg_model_prob']) * 100:.2f}%" if pd.notna(ticket_row["avg_model_prob"]) else "N/A")
+            snapshot_col7.metric("Resolved legs", str(ticket_row["resolved_legs"]))
+            snapshot_col8.metric("Open legs", str(ticket_row["open_legs"]))
+
+        if not selected_legs.empty:
+            saved_ticket_display = prefer_player_display(annotate_player_display(selected_legs.copy()))
+            if "leg_rank" in saved_ticket_display.columns:
+                saved_ticket_display["leg_rank"] = saved_ticket_display["leg_rank"].map(lambda value: f"Leg {int(value)}" if pd.notna(value) else "")
+            if "market" in saved_ticket_display.columns:
+                saved_ticket_display["market"] = saved_ticket_display["market"].map(prettify_market_label)
+            if {"pick", "line"}.intersection(saved_ticket_display.columns):
+                saved_ticket_display["bet"] = saved_ticket_display.apply(format_bet_label, axis=1)
+            saved_ticket_display["summary"] = saved_ticket_display.apply(
+                lambda row: " | ".join(
+                    part
+                    for part in [
+                        str(row.get("player", "")).strip(),
+                        str(row.get("player_team", row.get("team", ""))).strip(),
+                        str(row.get("bet", "")).strip(),
+                    ]
+                    if part and part.lower() != "nan"
+                ),
+                axis=1,
+            )
+            compact_ticket_columns = [
+                col
+                for col in [
+                    "leg_rank",
+                    "summary",
+                    "sportsbook",
+                    "grade",
+                    "actual_value",
+                    "winning_side",
+                    "profit_units",
+                ]
+                if col in saved_ticket_display.columns
+            ]
+            if compact_ticket_columns:
+                st.dataframe(
+                    compact_numeric_table(prettify_table_headers(saved_ticket_display[compact_ticket_columns])),
+                    use_container_width=True,
+                )
+            else:
+                st.dataframe(compact_numeric_table(saved_ticket_display), use_container_width=True)
+
             if not selected_ticket_meta.empty:
-                ticket_row = selected_ticket_meta.iloc[0]
                 st.markdown("#### Ticket vs Model Comparison")
 
                 if ticket_row["source"] == "live_edges":
