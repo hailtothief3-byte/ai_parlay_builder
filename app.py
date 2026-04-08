@@ -856,19 +856,69 @@ def persist_preference_if_changed(sport_label: str, preference_key: str, value, 
 
 init_db()
 
+theme_session_key = "app_theme_mode"
+sync_view_preference_state("__app__", theme_session_key, "theme_mode", "Light")
+theme_mode = st.session_state.get(theme_session_key, "Light")
+persist_preference_if_changed("__app__", "theme_mode", theme_mode, "Light")
+
+theme_tokens = {
+    "Light": {
+        "app_bg": "radial-gradient(circle at top left, rgba(244, 162, 97, 0.14), transparent 28%), radial-gradient(circle at top right, rgba(42, 157, 143, 0.12), transparent 26%), linear-gradient(180deg, #f6f4ee 0%, #fcfbf8 100%)",
+        "hero_bg": "linear-gradient(135deg, rgba(24, 35, 52, 0.94), rgba(34, 63, 95, 0.92))",
+        "hero_border": "rgba(255,255,255,0.08)",
+        "hero_text": "#f8fafc",
+        "hero_subtitle": "rgba(248, 250, 252, 0.84)",
+        "eyebrow": "#f4a261",
+        "section_title": "#1f2937",
+        "section_subtitle": "#6b7280",
+        "card_bg": "rgba(255,255,255,0.84)",
+        "card_border": "rgba(31, 41, 55, 0.08)",
+        "metric_bg": "rgba(255,255,255,0.74)",
+        "metric_border": "rgba(31, 41, 55, 0.08)",
+        "table_bg": "rgba(255,255,255,0.72)",
+        "table_border": "rgba(31, 41, 55, 0.06)",
+        "sidebar_bg": "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248, 246, 241, 0.98))",
+        "sidebar_border": "rgba(31, 41, 55, 0.06)",
+        "tabs_bg": "rgba(255,255,255,0.66)",
+        "tabs_border": "rgba(31, 41, 55, 0.06)",
+        "tab_active_bg": "linear-gradient(135deg, #264653, #2a9d8f)",
+        "tab_active_text": "white",
+    },
+    "Dark": {
+        "app_bg": "radial-gradient(circle at top left, rgba(244, 162, 97, 0.10), transparent 24%), radial-gradient(circle at top right, rgba(42, 157, 143, 0.10), transparent 24%), linear-gradient(180deg, #0f1722 0%, #111827 100%)",
+        "hero_bg": "linear-gradient(135deg, rgba(11, 18, 32, 0.96), rgba(23, 43, 68, 0.95))",
+        "hero_border": "rgba(148,163,184,0.18)",
+        "hero_text": "#e5eef8",
+        "hero_subtitle": "rgba(226, 232, 240, 0.82)",
+        "eyebrow": "#f4a261",
+        "section_title": "#e5eef8",
+        "section_subtitle": "#94a3b8",
+        "card_bg": "rgba(15, 23, 34, 0.88)",
+        "card_border": "rgba(148, 163, 184, 0.16)",
+        "metric_bg": "rgba(15, 23, 34, 0.82)",
+        "metric_border": "rgba(148, 163, 184, 0.14)",
+        "table_bg": "rgba(15, 23, 34, 0.84)",
+        "table_border": "rgba(148, 163, 184, 0.14)",
+        "sidebar_bg": "linear-gradient(180deg, rgba(15, 23, 34, 0.98), rgba(17, 24, 39, 0.98))",
+        "sidebar_border": "rgba(148, 163, 184, 0.14)",
+        "tabs_bg": "rgba(15, 23, 34, 0.72)",
+        "tabs_border": "rgba(148, 163, 184, 0.12)",
+        "tab_active_bg": "linear-gradient(135deg, #1d4ed8, #0f766e)",
+        "tab_active_text": "#f8fafc",
+    },
+}
+theme = theme_tokens.get(theme_mode, theme_tokens["Light"])
+
 st.set_page_config(
     page_title="AI Parlay Builder",
     page_icon=str(BRANDMARK_PATH) if BRANDMARK_PATH.exists() else None,
     layout="wide",
 )
 st.markdown(
-    """
+    f"""
     <style>
     .stApp {
-        background:
-            radial-gradient(circle at top left, rgba(244, 162, 97, 0.14), transparent 28%),
-            radial-gradient(circle at top right, rgba(42, 157, 143, 0.12), transparent 26%),
-            linear-gradient(180deg, #f6f4ee 0%, #fcfbf8 100%);
+        background: {theme["app_bg"]};
     }
     .block-container {
         padding-top: 1.5rem;
@@ -878,9 +928,9 @@ st.markdown(
     .app-hero {
         padding: 1.5rem 1.6rem;
         border-radius: 24px;
-        background: linear-gradient(135deg, rgba(24, 35, 52, 0.94), rgba(34, 63, 95, 0.92));
-        color: #f8fafc;
-        border: 1px solid rgba(255,255,255,0.08);
+        background: {theme["hero_bg"]};
+        color: {theme["hero_text"]};
+        border: 1px solid {theme["hero_border"]};
         box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
         margin-bottom: 1rem;
     }
@@ -902,7 +952,7 @@ st.markdown(
         text-transform: uppercase;
         letter-spacing: 0.16em;
         font-size: 0.72rem;
-        color: #f4a261;
+        color: {theme["eyebrow"]};
         margin-bottom: 0.45rem;
         font-weight: 700;
     }
@@ -915,7 +965,7 @@ st.markdown(
     .app-hero__subtitle {
         font-size: 1rem;
         max-width: 760px;
-        color: rgba(248, 250, 252, 0.84);
+        color: {theme["hero_subtitle"]};
         margin-bottom: 1rem;
     }
     .app-hero__meta {
@@ -937,16 +987,16 @@ st.markdown(
     .section-header__title {
         font-size: 1.35rem;
         font-weight: 800;
-        color: #1f2937;
+        color: {theme["section_title"]};
         margin-bottom: 0.15rem;
     }
     .section-header__subtitle {
         font-size: 0.95rem;
-        color: #6b7280;
+        color: {theme["section_subtitle"]};
     }
     .watchlist-alert-card {
-        background: rgba(255,255,255,0.84);
-        border: 1px solid rgba(31, 41, 55, 0.08);
+        background: {theme["card_bg"]};
+        border: 1px solid {theme["card_border"]};
         border-radius: 18px;
         padding: 0.95rem 1rem;
         box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
@@ -955,12 +1005,12 @@ st.markdown(
     .watchlist-alert-card__title {
         font-size: 0.98rem;
         font-weight: 800;
-        color: #1f2937;
+        color: {theme["section_title"]};
         margin-bottom: 0.18rem;
     }
     .watchlist-alert-card__subtitle {
         font-size: 0.86rem;
-        color: #6b7280;
+        color: {theme["section_subtitle"]};
         margin-bottom: 0.7rem;
     }
     .watchlist-alert-card__metrics {
@@ -972,13 +1022,13 @@ st.markdown(
     .watchlist-alert-card__metrics span {
         display: block;
         font-size: 0.72rem;
-        color: #6b7280;
+        color: {theme["section_subtitle"]};
         text-transform: uppercase;
         margin-bottom: 0.1rem;
     }
     .watchlist-alert-card__metrics strong {
         font-size: 0.98rem;
-        color: #1f2937;
+        color: {theme["section_title"]};
     }
     .watchlist-alert-card__signals {
         display: flex;
@@ -995,20 +1045,20 @@ st.markdown(
     .watchlist-alert-card__freshness {
         margin-top: 0.65rem;
         font-size: 0.8rem;
-        color: #6b7280;
+        color: {theme["section_subtitle"]};
     }
     [data-testid="stMetric"] {
-        background: rgba(255,255,255,0.74);
-        border: 1px solid rgba(31, 41, 55, 0.08);
+        background: {theme["metric_bg"]};
+        border: 1px solid {theme["metric_border"]};
         padding: 0.9rem 1rem;
         border-radius: 18px;
         box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
     }
     [data-testid="stDataFrame"] {
-        background: rgba(255,255,255,0.72);
+        background: {theme["table_bg"]};
         border-radius: 18px;
         padding: 0.15rem;
-        border: 1px solid rgba(31, 41, 55, 0.06);
+        border: 1px solid {theme["table_border"]};
     }
     [data-testid="stDataFrame"] div[role="grid"] {
         font-size: 0.92rem;
@@ -1018,15 +1068,15 @@ st.markdown(
         font-weight: 700;
     }
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248, 246, 241, 0.98));
-        border-right: 1px solid rgba(31, 41, 55, 0.06);
+        background: {theme["sidebar_bg"]};
+        border-right: 1px solid {theme["sidebar_border"]};
     }
     .stTabs [data-baseweb="tab-list"] {
         gap: 0.35rem;
-        background: rgba(255,255,255,0.66);
+        background: {theme["tabs_bg"]};
         padding: 0.45rem;
         border-radius: 18px;
-        border: 1px solid rgba(31, 41, 55, 0.06);
+        border: 1px solid {theme["tabs_border"]};
     }
     .stTabs [data-baseweb="tab"] {
         border-radius: 14px;
@@ -1034,15 +1084,15 @@ st.markdown(
         font-weight: 700;
     }
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #264653, #2a9d8f);
-        color: white;
+        background: {theme["tab_active_bg"]};
+        color: {theme["tab_active_text"]};
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-selector_col1, selector_col2 = st.columns([1.2, 1.0])
+selector_col1, selector_col2, selector_col3 = st.columns([1.1, 0.95, 0.8])
 sport_labels = get_sport_labels()
 app_sport_session_key = "selected_sport_label"
 sync_view_preference_state("__app__", app_sport_session_key, "selected_sport_label", sport_labels[0])
@@ -1066,6 +1116,14 @@ board_type = selector_col2.selectbox(
     args=(sport_label, board_type_session_key, "board_type"),
 )
 persist_preference_if_changed(sport_label, "board_type", board_type, "Sportsbook")
+theme_mode = selector_col3.selectbox(
+    "Theme",
+    ["Light", "Dark"],
+    key=theme_session_key,
+    on_change=persist_view_preference_from_session,
+    args=("__app__", theme_session_key, "theme_mode"),
+)
+persist_preference_if_changed("__app__", "theme_mode", theme_mode, "Light")
 
 sport_config = get_sport_config(sport_label)
 live_sport_keys = resolve_live_keys_for_label(sport_label)
@@ -1208,6 +1266,7 @@ with st.expander("View Preferences", expanded=False):
     st.caption("Remembered per sport after you change them. Reset here if you want to return to the default compact views.")
     view_pref_col1, view_pref_col2 = st.columns(2)
     view_pref_col1.write(f"Selected Sport: `{get_view_preference('__app__', 'selected_sport_label', sport_labels[0])}`")
+    view_pref_col1.write(f"Theme: `{get_view_preference('__app__', 'theme_mode', 'Light')}`")
     view_pref_col1.write(f"Board Type: `{get_view_preference(sport_label, 'board_type', 'Sportsbook')}`")
     view_pref_col1.write(f"Live Board: `{get_view_preference(sport_label, 'board_view_mode', 'Compact')}`")
     view_pref_col1.write(f"Board Show Non-Live: `{get_view_preference(sport_label, 'show_non_live_board', str(not sync_enabled))}`")
@@ -2370,7 +2429,38 @@ with tab4:
         if history.empty:
             st.warning("No history found.")
         else:
-            st.dataframe(compact_numeric_table(history), use_container_width=True)
+            history_display = prefer_player_display(annotate_player_display(history.copy()))
+            if "market" in history_display.columns:
+                history_display["market"] = history_display["market"].map(prettify_market_label)
+            if {"pick", "line"}.intersection(history_display.columns):
+                history_display["bet"] = history_display.apply(format_bet_label, axis=1)
+            history_display["summary"] = history_display.apply(
+                lambda row: " | ".join(
+                    part
+                    for part in [
+                        str(row.get("player", "")).strip(),
+                        str(row.get("player_team", row.get("team", ""))).strip(),
+                        str(row.get("book", row.get("sportsbook", ""))).strip(),
+                        str(row.get("bet", "")).strip(),
+                    ]
+                    if part and part.lower() != "nan"
+                ),
+                axis=1,
+            )
+            history_columns = [
+                col
+                for col in [
+                    "summary",
+                    "market",
+                    "price",
+                    "line",
+                    "side",
+                    "pulled_at",
+                    "event_id",
+                ]
+                if col in history_display.columns
+            ]
+            st.dataframe(compact_numeric_table(prettify_table_headers(history_display[history_columns])), use_container_width=True)
 
             if "pulled_at" in history.columns and "line" in history.columns:
                 chart_df = history.dropna(subset=["pulled_at", "line"]).copy()
