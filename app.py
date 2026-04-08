@@ -16,6 +16,7 @@ from services.dfs_slip_service import (
     format_dfs_slip_payload,
     format_dfs_slip_text,
     get_dfs_slip_adapters,
+    recommend_dfs_slip_adapter,
 )
 from services.analytics import build_calibration_summary, build_clv_backtest, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_sportsbook_summary
 from services.board_service import get_latest_board
@@ -678,9 +679,44 @@ def render_dfs_autoslip_panel(
 
     adapters = get_dfs_slip_adapters()
     adapter_options = {adapter["label"]: adapter for adapter in adapters}
-    default_label = "PrizePicks" if "PrizePicks" in adapter_options else next(iter(adapter_options))
+    recommendation = recommend_dfs_slip_adapter(card_df, style_label=style_label)
+    recommended_adapter = recommendation["adapter"]
+    default_label = str(recommended_adapter["label"])
+    recommendation_bg = "rgba(13, 25, 44, 0.72)" if theme_mode == "Dark" else "rgba(255, 255, 255, 0.9)"
+    recommendation_border = "rgba(96, 165, 250, 0.14)" if theme_mode == "Dark" else "rgba(31, 41, 55, 0.08)"
+    recommendation_title = "#f3f8ff" if theme_mode == "Dark" else "#17324d"
+    recommendation_body = "#c9dcf3" if theme_mode == "Dark" else "#526273"
 
     st.markdown("### DFS Auto-Slip")
+    st.markdown(
+        f"""
+        <div style="
+            background: {recommendation_bg};
+            border: 1px solid {recommendation_border};
+            border-radius: 18px;
+            padding: 0.9rem 1rem;
+            margin-bottom: 0.8rem;
+        ">
+            <div style="display:flex;align-items:center;gap:0.7rem;margin-bottom:0.25rem;">
+                <span style="
+                    display:inline-flex;
+                    align-items:center;
+                    justify-content:center;
+                    width:2rem;
+                    height:2rem;
+                    border-radius:999px;
+                    background:{recommended_adapter['accent']};
+                    color:#f8fbff;
+                    font-size:0.82rem;
+                    font-weight:800;
+                ">{recommended_adapter['brand_mark']}</span>
+                <div style="font-size:1rem;font-weight:800;color:{recommendation_title};">Best Current Destination: {recommended_adapter['label']}</div>
+            </div>
+            <div style="font-size:0.9rem;color:{recommendation_body};line-height:1.5;">{recommendation['reason']}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     target_label = st.selectbox(
         "DFS target app",
         options=list(adapter_options.keys()),
@@ -700,7 +736,7 @@ def render_dfs_autoslip_panel(
     slip_json = format_dfs_slip_json(payload)
 
     meta_col1, meta_col2, meta_col3 = st.columns(3)
-    meta_col1.metric("Target", target_label)
+    meta_col1.metric("Target", f"{adapter['brand_mark']} {target_label}")
     meta_col2.metric("Legs", str(payload["leg_count"]))
     meta_col3.metric("Prefill", "Available" if adapter["supports_public_prefill"] else "Not public")
 

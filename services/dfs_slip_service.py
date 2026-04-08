@@ -13,6 +13,8 @@ from builders.slips import format_dfs_slip
 class DfsSlipAdapter:
     key: str
     label: str
+    brand_mark: str
+    accent: str
     launch_url: str
     handoff_mode: str
     supports_public_prefill: bool
@@ -25,6 +27,8 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
     DfsSlipAdapter(
         key="prizepicks",
         label="PrizePicks",
+        brand_mark="PP",
+        accent="#f97316",
         launch_url="https://app.prizepicks.com/",
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
@@ -35,6 +39,8 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
     DfsSlipAdapter(
         key="underdog",
         label="Underdog Fantasy",
+        brand_mark="UD",
+        accent="#16a34a",
         launch_url="https://underdogfantasy.com/",
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
@@ -45,6 +51,8 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
     DfsSlipAdapter(
         key="chalkboard",
         label="Chalkboard",
+        brand_mark="CB",
+        accent="#8b5cf6",
         launch_url="https://chalkboard.io/",
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
@@ -55,6 +63,8 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
     DfsSlipAdapter(
         key="betr",
         label="Betr Picks",
+        brand_mark="BT",
+        accent="#ec4899",
         launch_url="https://betr.app/",
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
@@ -65,6 +75,8 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
     DfsSlipAdapter(
         key="parlayplay",
         label="ParlayPlay",
+        brand_mark="PY",
+        accent="#f59e0b",
         launch_url="https://app.parlayplay.io/",
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
@@ -75,6 +87,8 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
     DfsSlipAdapter(
         key="dabble",
         label="Dabble",
+        brand_mark="DB",
+        accent="#14b8a6",
         launch_url="https://www.dabble.com/",
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
@@ -85,6 +99,8 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
     DfsSlipAdapter(
         key="draftkings_pick6",
         label="DraftKings Pick 6",
+        brand_mark="DK",
+        accent="#10b981",
         launch_url="https://pick6.draftkings.com/",
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
@@ -97,6 +113,57 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
 
 def get_dfs_slip_adapters() -> list[dict]:
     return [asdict(adapter) for adapter in DFS_SLIP_ADAPTERS]
+
+
+def recommend_dfs_slip_adapter(card_df: pd.DataFrame, style_label: str = "") -> dict:
+    if card_df.empty:
+        adapter = DFS_SLIP_ADAPTERS[0]
+        return {
+            "adapter": asdict(adapter),
+            "reason": "Defaulted to the primary DFS adapter because no card legs were available.",
+        }
+
+    searchable_tokens: set[str] = set()
+    for column in ["sportsbook", "book_key"]:
+        if column in card_df.columns:
+            searchable_tokens.update(
+                str(value).strip().lower()
+                for value in card_df[column].dropna().tolist()
+                if str(value).strip()
+            )
+
+    for adapter in DFS_SLIP_ADAPTERS:
+        adapter_tokens = {
+            adapter.key.lower(),
+            adapter.label.lower(),
+            adapter.label.lower().replace(" fantasy", ""),
+            adapter.label.lower().replace(" ", ""),
+        }
+        if any(any(token in source for token in adapter_tokens) for source in searchable_tokens):
+            return {
+                "adapter": asdict(adapter),
+                "reason": f"Recommended because the current card already references {adapter.label} as the underlying DFS source.",
+            }
+
+    safe_style = str(style_label).strip().lower()
+    if safe_style == "safe":
+        adapter = next(item for item in DFS_SLIP_ADAPTERS if item.key == "prizepicks")
+        return {
+            "adapter": asdict(adapter),
+            "reason": "Recommended as the default safe-profile destination for a clean pick'em handoff.",
+        }
+    if safe_style == "aggressive":
+        adapter = next(item for item in DFS_SLIP_ADAPTERS if item.key == "underdog")
+        return {
+            "adapter": asdict(adapter),
+            "reason": "Recommended as the default aggressive-profile destination when no source-specific app match is detected.",
+        }
+
+    adapter = next(item for item in DFS_SLIP_ADAPTERS if item.key == "draftkings_pick6")
+    return {
+        "adapter": asdict(adapter),
+        "reason": "Recommended as the default balanced web-entry destination when no source-specific app match is detected.",
+    }
 
 
 def _normalize_leg_records(card_df: pd.DataFrame) -> list[dict]:
