@@ -106,12 +106,23 @@ def apply_market_coverage(df: pd.DataFrame, coverage_map: dict[str, dict[str, st
 
 
 def render_coverage_badge(status: str) -> str:
-    badge_styles = {
-        "Live": ("#0f5132", "#d1e7dd"),
-        "Demo Only": ("#664d03", "#fff3cd"),
-        "Provider Unavailable": ("#842029", "#f8d7da"),
-    }
-    text_color, bg_color = badge_styles.get(status, ("#1f2937", "#e5e7eb"))
+    badge_styles = (
+        {
+            "Live": ("#8ee3b7", "#0f2b1f"),
+            "Demo Only": ("#f5d27a", "#33270f"),
+            "Provider Unavailable": ("#ff9d9d", "#33161a"),
+        }
+        if theme_mode == "Dark"
+        else {
+            "Live": ("#0f5132", "#d1e7dd"),
+            "Demo Only": ("#664d03", "#fff3cd"),
+            "Provider Unavailable": ("#842029", "#f8d7da"),
+        }
+    )
+    text_color, bg_color = badge_styles.get(
+        status,
+        ("#dbe4f0", "#1f2937") if theme_mode == "Dark" else ("#1f2937", "#e5e7eb"),
+    )
     return (
         "<span style="
         f"'display:inline-block;padding:0.2rem 0.55rem;border-radius:999px;"
@@ -124,11 +135,19 @@ def style_coverage_table(df: pd.DataFrame):
     if df.empty or "coverage_status" not in df.columns:
         return df
 
-    style_map = {
-        "Live": "background-color: #d1e7dd; color: #0f5132; font-weight: 600;",
-        "Demo Only": "background-color: #fff3cd; color: #664d03; font-weight: 600;",
-        "Provider Unavailable": "background-color: #f8d7da; color: #842029; font-weight: 600;",
-    }
+    style_map = (
+        {
+            "Live": "background-color: #0f2b1f; color: #8ee3b7; font-weight: 600;",
+            "Demo Only": "background-color: #33270f; color: #f5d27a; font-weight: 600;",
+            "Provider Unavailable": "background-color: #33161a; color: #ff9d9d; font-weight: 600;",
+        }
+        if theme_mode == "Dark"
+        else {
+            "Live": "background-color: #d1e7dd; color: #0f5132; font-weight: 600;",
+            "Demo Only": "background-color: #fff3cd; color: #664d03; font-weight: 600;",
+            "Provider Unavailable": "background-color: #f8d7da; color: #842029; font-weight: 600;",
+        }
+    )
 
     def coverage_style(value):
         return style_map.get(str(value), "")
@@ -143,11 +162,19 @@ def style_signal_table(df: pd.DataFrame):
     styler = df.style
 
     if "coverage_status" in df.columns:
-        coverage_style_map = {
-            "Live": "background-color: #d1e7dd; color: #0f5132; font-weight: 600;",
-            "Demo Only": "background-color: #fff3cd; color: #664d03; font-weight: 600;",
-            "Provider Unavailable": "background-color: #f8d7da; color: #842029; font-weight: 600;",
-        }
+        coverage_style_map = (
+            {
+                "Live": "background-color: #0f2b1f; color: #8ee3b7; font-weight: 600;",
+                "Demo Only": "background-color: #33270f; color: #f5d27a; font-weight: 600;",
+                "Provider Unavailable": "background-color: #33161a; color: #ff9d9d; font-weight: 600;",
+            }
+            if theme_mode == "Dark"
+            else {
+                "Live": "background-color: #d1e7dd; color: #0f5132; font-weight: 600;",
+                "Demo Only": "background-color: #fff3cd; color: #664d03; font-weight: 600;",
+                "Provider Unavailable": "background-color: #f8d7da; color: #842029; font-weight: 600;",
+            }
+        )
 
         def coverage_style(value):
             return coverage_style_map.get(str(value), "")
@@ -156,11 +183,19 @@ def style_signal_table(df: pd.DataFrame):
 
     movement_columns = [col for col in ["line_move_label", "price_move_label"] if col in df.columns]
     if movement_columns:
-        movement_style_map = {
-            "better": "background-color: #d1fae5; color: #065f46; font-weight: 700;",
-            "worse": "background-color: #fee2e2; color: #991b1b; font-weight: 700;",
-            "neutral": "background-color: #e5e7eb; color: #374151; font-weight: 700;",
-        }
+        movement_style_map = (
+            {
+                "better": "background-color: #0f2b1f; color: #8ee3b7; font-weight: 700;",
+                "worse": "background-color: #33161a; color: #ff9d9d; font-weight: 700;",
+                "neutral": "background-color: #1f2937; color: #dbe4f0; font-weight: 700;",
+            }
+            if theme_mode == "Dark"
+            else {
+                "better": "background-color: #d1fae5; color: #065f46; font-weight: 700;",
+                "worse": "background-color: #fee2e2; color: #991b1b; font-weight: 700;",
+                "neutral": "background-color: #e5e7eb; color: #374151; font-weight: 700;",
+            }
+        )
 
         def movement_style(value):
             return movement_style_map.get(str(value), "")
@@ -269,20 +304,32 @@ def render_empty_state(title: str, body: str, tone: str = "neutral") -> None:
 
 
 def render_workflow_check_item(title: str, ok: bool, detail: str) -> None:
-    badge_bg = "#d1fae5" if ok else "#fee2e2"
-    badge_text = "#065f46" if ok else "#991b1b"
+    if theme_mode == "Dark":
+        badge_bg = "#0f2b1f" if ok else "#33161a"
+        badge_text = "#8ee3b7" if ok else "#ff9d9d"
+        card_bg = "#0f1722"
+        border = "#334155"
+        title_color = "#e5eef8"
+        detail_color = "#a7b6c8"
+    else:
+        badge_bg = "#d1fae5" if ok else "#fee2e2"
+        badge_text = "#065f46" if ok else "#991b1b"
+        card_bg = "rgba(255,255,255,0.8)"
+        border = "rgba(31,41,55,0.08)"
+        title_color = "#1f2937"
+        detail_color = "#6b7280"
     badge_label = "Ready" if ok else "Pending"
     st.markdown(
         f"""
         <div style="
-            background: rgba(255,255,255,0.8);
-            border: 1px solid rgba(31,41,55,0.08);
+            background: {card_bg};
+            border: 1px solid {border};
             border-radius: 16px;
             padding: 0.85rem 0.95rem;
             margin-bottom: 0.55rem;
         ">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;">
-                <div style="font-size:0.95rem;font-weight:800;color:#1f2937;">{title}</div>
+                <div style="font-size:0.95rem;font-weight:800;color:{title_color};">{title}</div>
                 <span style="
                     background:{badge_bg};
                     color:{badge_text};
@@ -292,7 +339,7 @@ def render_workflow_check_item(title: str, ok: bool, detail: str) -> None:
                     font-weight:700;
                 ">{badge_label}</span>
             </div>
-            <div style="margin-top:0.3rem;font-size:0.88rem;color:#6b7280;line-height:1.45;">{detail}</div>
+            <div style="margin-top:0.3rem;font-size:0.88rem;color:{detail_color};line-height:1.45;">{detail}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -479,14 +526,22 @@ def build_notification_center(
 
 
 def render_notification_notice(notice: dict, key_suffix: str, sport_label: str) -> None:
-    severity_map = {
-        "high": ("#7f1d1d", "#fee2e2", "#fecaca"),
-        "medium": ("#92400e", "#fef3c7", "#fde68a"),
-        "low": ("#1e3a8a", "#dbeafe", "#bfdbfe"),
-    }
+    severity_map = (
+        {
+            "high": ("#ffb4b4", "#33161a", "#8b3a45"),
+            "medium": ("#f5d27a", "#33270f", "#7c5a18"),
+            "low": ("#8ab4ff", "#10233d", "#315b9b"),
+        }
+        if theme_mode == "Dark"
+        else {
+            "high": ("#7f1d1d", "#fee2e2", "#fecaca"),
+            "medium": ("#92400e", "#fef3c7", "#fde68a"),
+            "low": ("#1e3a8a", "#dbeafe", "#bfdbfe"),
+        }
+    )
     text_color, bg_color, border_color = severity_map.get(
         str(notice.get("severity") or "low"),
-        ("#374151", "#f3f4f6", "#e5e7eb"),
+        ("#dbe4f0", "#1f2937", "#334155") if theme_mode == "Dark" else ("#374151", "#f3f4f6", "#e5e7eb"),
     )
     st.markdown(
         f"""
@@ -516,7 +571,6 @@ def render_notification_notice(notice: dict, key_suffix: str, sport_label: str) 
         dismiss_notification(sport_label, str(notice["notice_id"]))
         st.rerun()
 
-
 def render_prop_card(card: dict) -> None:
     accent_map = {
         "Live": "#2a9d8f",
@@ -524,41 +578,54 @@ def render_prop_card(card: dict) -> None:
         "Provider Unavailable": "#e76f51",
     }
     accent = accent_map.get(card.get("coverage_status"), "#264653")
+    if theme_mode == "Dark":
+        card_bg = "rgba(15,23,34,0.96)"
+        border = "#334155"
+        shadow = "0 14px 32px rgba(2,6,23,0.35)"
+        title_color = "#e5eef8"
+        muted_color = "#a7b6c8"
+        note_color = "#cbd5e1"
+    else:
+        card_bg = "rgba(255,255,255,0.86)"
+        border = "rgba(31,41,55,0.08)"
+        shadow = "0 12px 28px rgba(15,23,42,0.06)"
+        title_color = "#1f2937"
+        muted_color = "#6b7280"
+        note_color = "#4b5563"
     st.markdown(
         f"""
         <div style="
-            background: rgba(255,255,255,0.86);
-            border: 1px solid rgba(31,41,55,0.08);
+            background: {card_bg};
+            border: 1px solid {border};
             border-left: 6px solid {accent};
             border-radius: 18px;
             padding: 1rem 1rem 0.9rem 1rem;
-            box-shadow: 0 12px 28px rgba(15,23,42,0.06);
+            box-shadow: {shadow};
             margin-bottom: 0.85rem;
         ">
             <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;">
                 <div>
-                    <div style="font-size:1.03rem;font-weight:800;color:#1f2937;">{card['title']}</div>
-                    <div style="font-size:0.9rem;color:#6b7280;margin-top:0.15rem;">{card['sportsbook']} • {card['pick']}</div>
+                    <div style="font-size:1.03rem;font-weight:800;color:{title_color};">{card['title']}</div>
+                    <div style="font-size:0.9rem;color:{muted_color};margin-top:0.15rem;">{card['sportsbook']} | {card['pick']}</div>
                 </div>
                 <div>{render_coverage_badge(card["coverage_status"])}</div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0.65rem;margin-top:0.85rem;">
-                <div><div style="font-size:0.72rem;color:#6b7280;text-transform:uppercase;">Projection</div><div style="font-size:1rem;font-weight:700;">{card['projection']}</div></div>
-                <div><div style="font-size:0.72rem;color:#6b7280;text-transform:uppercase;">Model Prob</div><div style="font-size:1rem;font-weight:700;">{card['model_prob']}%</div></div>
-                <div><div style="font-size:0.72rem;color:#6b7280;text-transform:uppercase;">Edge</div><div style="font-size:1rem;font-weight:700;">{card['edge']}%</div></div>
-                <div><div style="font-size:0.72rem;color:#6b7280;text-transform:uppercase;">Stake</div><div style="font-size:1rem;font-weight:700;">{card['recommended_units']}u</div></div>
+                <div><div style="font-size:0.72rem;color:{muted_color};text-transform:uppercase;">Projection</div><div style="font-size:1rem;font-weight:700;color:{title_color};">{card['projection']}</div></div>
+                <div><div style="font-size:0.72rem;color:{muted_color};text-transform:uppercase;">Model Prob</div><div style="font-size:1rem;font-weight:700;color:{title_color};">{card['model_prob']}%</div></div>
+                <div><div style="font-size:0.72rem;color:{muted_color};text-transform:uppercase;">Edge</div><div style="font-size:1rem;font-weight:700;color:{title_color};">{card['edge']}%</div></div>
+                <div><div style="font-size:0.72rem;color:{muted_color};text-transform:uppercase;">Stake</div><div style="font-size:1rem;font-weight:700;color:{title_color};">{card['recommended_units']}u</div></div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0.65rem;margin-top:0.75rem;">
-                <div><div style="font-size:0.72rem;color:#6b7280;text-transform:uppercase;">Implied Prob</div><div style="font-size:0.96rem;font-weight:600;">{card['implied_prob']}%</div></div>
-                <div><div style="font-size:0.72rem;color:#6b7280;text-transform:uppercase;">Consensus</div><div style="font-size:0.96rem;font-weight:600;">{card['consensus_line']}</div></div>
-                <div><div style="font-size:0.72rem;color:#6b7280;text-transform:uppercase;">Confidence</div><div style="font-size:0.96rem;font-weight:600;">{card['confidence']}</div></div>
+                <div><div style="font-size:0.72rem;color:{muted_color};text-transform:uppercase;">Implied Prob</div><div style="font-size:0.96rem;font-weight:600;color:{title_color};">{card['implied_prob']}%</div></div>
+                <div><div style="font-size:0.72rem;color:{muted_color};text-transform:uppercase;">Consensus</div><div style="font-size:0.96rem;font-weight:600;color:{title_color};">{card['consensus_line']}</div></div>
+                <div><div style="font-size:0.72rem;color:{muted_color};text-transform:uppercase;">Confidence</div><div style="font-size:0.96rem;font-weight:600;color:{title_color};">{card['confidence']}</div></div>
             </div>
-            <div style="margin-top:0.7rem;font-size:0.86rem;color:#4b5563;">{card.get("coverage_note") or ""}</div>
+            <div style="margin-top:0.7rem;font-size:0.86rem;color:{note_color};">{card.get("coverage_note") or ""}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
 
 def compact_numeric_table(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -3432,3 +3499,4 @@ with tab7:
     if st.button("Rebuild Live Projections From Imported Stats", use_container_width=True):
         rebuilt = build_live_projections_for_sports([sport_label])
         st.success(f"Rebuilt {rebuilt.get(sport_label, 0)} projections with the stats-enhanced hybrid model.")
+
