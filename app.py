@@ -2666,7 +2666,41 @@ with tab5:
             tone="neutral",
         )
     else:
-        st.dataframe(compact_numeric_table(ungraded_df.head(100)), use_container_width=True)
+        ungraded_display = prefer_player_display(annotate_player_display(ungraded_df.head(100).copy()))
+        if "market" in ungraded_display.columns:
+            ungraded_display["market"] = ungraded_display["market"].map(prettify_market_label)
+        if {"pick", "line"}.intersection(ungraded_display.columns):
+            ungraded_display["bet"] = ungraded_display.apply(format_bet_label, axis=1)
+        ungraded_display["summary"] = ungraded_display.apply(
+            lambda row: " | ".join(
+                part
+                for part in [
+                    str(row.get("player", "")).strip(),
+                    str(row.get("player_team", row.get("team", ""))).strip(),
+                    str(row.get("bet", "")).strip(),
+                ]
+                if part and part.lower() != "nan"
+            ),
+            axis=1,
+        )
+        ungraded_columns = [
+            col
+            for col in [
+                "summary",
+                "sportsbook",
+                "event_id",
+                "tracked_at",
+                "model_prob",
+                "edge",
+                "confidence",
+            ]
+            if col in ungraded_display.columns
+        ]
+        if "model_prob" in ungraded_display.columns:
+            ungraded_display["model_prob"] = (pd.to_numeric(ungraded_display["model_prob"], errors="coerce") * 100).round(2)
+        if "edge" in ungraded_display.columns:
+            ungraded_display["edge"] = (pd.to_numeric(ungraded_display["edge"], errors="coerce") * 100).round(2)
+        st.dataframe(compact_numeric_table(prettify_table_headers(ungraded_display[ungraded_columns])), use_container_width=True)
         st.download_button(
             "Export Ungraded Tracked Picks CSV",
             data=ungraded_df.to_csv(index=False),
@@ -2708,13 +2742,28 @@ with tab5:
             sort_by=graded_sort_by,
             ascending=False,
         )
-        graded_display = graded_df[
-            [
-                "player",
-                "market",
-                "pick",
+        graded_display = prefer_player_display(annotate_player_display(graded_df.copy()))
+        if "market" in graded_display.columns:
+            graded_display["market"] = graded_display["market"].map(prettify_market_label)
+        if {"pick", "line"}.intersection(graded_display.columns):
+            graded_display["bet"] = graded_display.apply(format_bet_label, axis=1)
+        graded_display["summary"] = graded_display.apply(
+            lambda row: " | ".join(
+                part
+                for part in [
+                    str(row.get("player", "")).strip(),
+                    str(row.get("player_team", row.get("team", ""))).strip(),
+                    str(row.get("bet", "")).strip(),
+                ]
+                if part and part.lower() != "nan"
+            ),
+            axis=1,
+        )
+        graded_columns = [
+            col
+            for col in [
+                "summary",
                 "sportsbook",
-                "line",
                 "actual_value",
                 "winning_side",
                 "grade",
@@ -2724,11 +2773,15 @@ with tab5:
                 "tracked_at",
                 "resolved_at",
             ]
-        ].copy()
-        graded_display["model_prob"] = (graded_display["model_prob"] * 100).round(2)
-        graded_display["edge"] = (graded_display["edge"] * 100).round(2)
-        graded_display["profit_units"] = graded_display["profit_units"].round(3)
-        st.dataframe(compact_numeric_table(graded_display.head(200)), use_container_width=True)
+            if col in graded_display.columns
+        ]
+        if "model_prob" in graded_display.columns:
+            graded_display["model_prob"] = (pd.to_numeric(graded_display["model_prob"], errors="coerce") * 100).round(2)
+        if "edge" in graded_display.columns:
+            graded_display["edge"] = (pd.to_numeric(graded_display["edge"], errors="coerce") * 100).round(2)
+        if "profit_units" in graded_display.columns:
+            graded_display["profit_units"] = pd.to_numeric(graded_display["profit_units"], errors="coerce").round(3)
+        st.dataframe(compact_numeric_table(prettify_table_headers(graded_display[graded_columns].head(200))), use_container_width=True)
         st.download_button(
             "Export Graded Picks CSV",
             data=graded_df.to_csv(index=False),
