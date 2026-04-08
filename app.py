@@ -972,10 +972,18 @@ theme_tokens = {
         "table_border": "rgba(31, 41, 55, 0.06)",
         "sidebar_bg": "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248, 246, 241, 0.98))",
         "sidebar_border": "rgba(31, 41, 55, 0.06)",
+        "sidebar_text": "#1f2937",
+        "sidebar_muted": "#6b7280",
         "tabs_bg": "rgba(255,255,255,0.66)",
         "tabs_border": "rgba(31, 41, 55, 0.06)",
+        "tab_text": "#435266",
         "tab_active_bg": "linear-gradient(135deg, #264653, #2a9d8f)",
         "tab_active_text": "white",
+        "input_bg": "#f8f5ec",
+        "input_border": "#d6d0c2",
+        "input_text": "#1f2937",
+        "input_label": "#4b5563",
+        "expander_text": "#334155",
     },
     "Dark": {
         "app_bg": "radial-gradient(circle at top left, rgba(244, 162, 97, 0.10), transparent 24%), radial-gradient(circle at top right, rgba(42, 157, 143, 0.10), transparent 24%), linear-gradient(180deg, #0f1722 0%, #111827 100%)",
@@ -998,10 +1006,18 @@ theme_tokens = {
         "table_border": "rgba(148, 163, 184, 0.14)",
         "sidebar_bg": "linear-gradient(180deg, rgba(15, 23, 34, 0.98), rgba(17, 24, 39, 0.98))",
         "sidebar_border": "rgba(148, 163, 184, 0.14)",
+        "sidebar_text": "#dbe4f0",
+        "sidebar_muted": "#94a3b8",
         "tabs_bg": "rgba(15, 23, 34, 0.72)",
         "tabs_border": "rgba(148, 163, 184, 0.12)",
+        "tab_text": "#8fa3ba",
         "tab_active_bg": "linear-gradient(135deg, #1d4ed8, #0f766e)",
         "tab_active_text": "#f8fafc",
+        "input_bg": "#f4ecdc",
+        "input_border": "#32506d",
+        "input_text": "#17212f",
+        "input_label": "#cbd5e1",
+        "expander_text": "#cbd5e1",
     },
 }
 theme = theme_tokens.get(theme_mode, theme_tokens["Light"])
@@ -1167,6 +1183,18 @@ base_css = """
     background: __SIDEBAR_BG__;
     border-right: 1px solid __SIDEBAR_BORDER__;
 }
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] li,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stMarkdown,
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+    color: __SIDEBAR_TEXT__;
+}
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+[data-testid="stSidebar"] small {
+    color: __SIDEBAR_MUTED__;
+}
 .stTabs [data-baseweb="tab-list"] {
     gap: 0.35rem;
     background: __TABS_BG__;
@@ -1178,10 +1206,38 @@ base_css = """
     border-radius: 14px;
     padding: 0.45rem 0.9rem;
     font-weight: 700;
+    color: __TAB_TEXT__;
 }
 .stTabs [aria-selected="true"] {
     background: __TAB_ACTIVE_BG__;
     color: __TAB_ACTIVE_TEXT__;
+}
+.stTabs [data-baseweb="tab"]:hover {
+    color: __SECTION_TITLE__;
+}
+[data-baseweb="select"] > div,
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stTextArea"] textarea {
+    background: __INPUT_BG__;
+    color: __INPUT_TEXT__;
+    border-color: __INPUT_BORDER__;
+}
+[data-baseweb="select"] svg,
+[data-testid="stTextInput"] svg,
+[data-testid="stNumberInput"] svg {
+    fill: __INPUT_TEXT__;
+}
+label,
+[data-testid="stWidgetLabel"],
+.stRadio label,
+.stCheckbox label {
+    color: __INPUT_LABEL__;
+}
+details summary,
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] details summary p {
+    color: __EXPANDER_TEXT__;
 }
 </style>
 """
@@ -1206,10 +1262,18 @@ theme_css = (
     .replace("__TABLE_BORDER__", theme["table_border"])
     .replace("__SIDEBAR_BG__", theme["sidebar_bg"])
     .replace("__SIDEBAR_BORDER__", theme["sidebar_border"])
+    .replace("__SIDEBAR_TEXT__", theme["sidebar_text"])
+    .replace("__SIDEBAR_MUTED__", theme["sidebar_muted"])
     .replace("__TABS_BG__", theme["tabs_bg"])
     .replace("__TABS_BORDER__", theme["tabs_border"])
+    .replace("__TAB_TEXT__", theme["tab_text"])
     .replace("__TAB_ACTIVE_BG__", theme["tab_active_bg"])
     .replace("__TAB_ACTIVE_TEXT__", theme["tab_active_text"])
+    .replace("__INPUT_BG__", theme["input_bg"])
+    .replace("__INPUT_BORDER__", theme["input_border"])
+    .replace("__INPUT_TEXT__", theme["input_text"])
+    .replace("__INPUT_LABEL__", theme["input_label"])
+    .replace("__EXPANDER_TEXT__", theme["expander_text"])
 )
 st.markdown(theme_css, unsafe_allow_html=True)
 
