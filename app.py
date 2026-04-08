@@ -984,40 +984,50 @@ theme_tokens = {
         "input_text": "#1f2937",
         "input_label": "#4b5563",
         "expander_text": "#334155",
+        "body_text": "#334155",
+        "heading_text": "#1f2937",
+        "button_bg": "linear-gradient(135deg, #ffffff, #f7f2e7)",
+        "button_text": "#17324d",
+        "button_border": "#d8d2c5",
     },
     "Dark": {
-        "app_bg": "radial-gradient(circle at top left, rgba(244, 162, 97, 0.10), transparent 24%), radial-gradient(circle at top right, rgba(42, 157, 143, 0.10), transparent 24%), linear-gradient(180deg, #0f1722 0%, #111827 100%)",
-        "hero_bg": "linear-gradient(135deg, rgba(11, 18, 32, 0.96), rgba(23, 43, 68, 0.95))",
-        "hero_border": "rgba(148,163,184,0.18)",
-        "hero_brand_bg": "rgba(15,23,34,0.68)",
-        "hero_brand_border": "rgba(148,163,184,0.24)",
-        "hero_pill_bg": "rgba(15,23,34,0.58)",
-        "hero_pill_border": "rgba(148,163,184,0.22)",
-        "hero_text": "#e5eef8",
-        "hero_subtitle": "rgba(226, 232, 240, 0.82)",
-        "eyebrow": "#f4a261",
-        "section_title": "#e5eef8",
-        "section_subtitle": "#94a3b8",
-        "card_bg": "rgba(15, 23, 34, 0.88)",
-        "card_border": "rgba(148, 163, 184, 0.16)",
-        "metric_bg": "rgba(15, 23, 34, 0.82)",
-        "metric_border": "rgba(148, 163, 184, 0.14)",
-        "table_bg": "rgba(15, 23, 34, 0.84)",
-        "table_border": "rgba(148, 163, 184, 0.14)",
-        "sidebar_bg": "linear-gradient(180deg, rgba(15, 23, 34, 0.98), rgba(17, 24, 39, 0.98))",
-        "sidebar_border": "rgba(148, 163, 184, 0.14)",
-        "sidebar_text": "#dbe4f0",
-        "sidebar_muted": "#94a3b8",
-        "tabs_bg": "rgba(15, 23, 34, 0.72)",
-        "tabs_border": "rgba(148, 163, 184, 0.12)",
-        "tab_text": "#8fa3ba",
-        "tab_active_bg": "linear-gradient(135deg, #1d4ed8, #0f766e)",
+        "app_bg": "radial-gradient(circle at top left, rgba(56, 189, 248, 0.11), transparent 22%), radial-gradient(circle at top right, rgba(99, 102, 241, 0.12), transparent 24%), linear-gradient(180deg, #08111f 0%, #0b1426 48%, #0d1830 100%)",
+        "hero_bg": "linear-gradient(135deg, rgba(12, 26, 47, 0.98), rgba(19, 44, 77, 0.96))",
+        "hero_border": "rgba(96,165,250,0.22)",
+        "hero_brand_bg": "rgba(12, 26, 47, 0.76)",
+        "hero_brand_border": "rgba(125, 211, 252, 0.22)",
+        "hero_pill_bg": "rgba(10, 22, 40, 0.64)",
+        "hero_pill_border": "rgba(96, 165, 250, 0.20)",
+        "hero_text": "#edf6ff",
+        "hero_subtitle": "rgba(208, 225, 244, 0.88)",
+        "eyebrow": "#7dd3fc",
+        "section_title": "#f3f8ff",
+        "section_subtitle": "#9fb4cc",
+        "card_bg": "rgba(11, 22, 39, 0.92)",
+        "card_border": "rgba(96, 165, 250, 0.16)",
+        "metric_bg": "rgba(14, 28, 48, 0.90)",
+        "metric_border": "rgba(96, 165, 250, 0.14)",
+        "table_bg": "rgba(13, 25, 44, 0.90)",
+        "table_border": "rgba(96, 165, 250, 0.12)",
+        "sidebar_bg": "linear-gradient(180deg, rgba(7, 16, 30, 0.99), rgba(10, 20, 36, 0.99))",
+        "sidebar_border": "rgba(96, 165, 250, 0.12)",
+        "sidebar_text": "#deebfb",
+        "sidebar_muted": "#8fa7c4",
+        "tabs_bg": "rgba(10, 22, 40, 0.76)",
+        "tabs_border": "rgba(96, 165, 250, 0.10)",
+        "tab_text": "#9fc4e8",
+        "tab_active_bg": "linear-gradient(135deg, #2563eb, #0891b2)",
         "tab_active_text": "#f8fafc",
-        "input_bg": "#f4ecdc",
-        "input_border": "#32506d",
-        "input_text": "#17212f",
-        "input_label": "#cbd5e1",
-        "expander_text": "#cbd5e1",
+        "input_bg": "rgba(16, 33, 58, 0.96)",
+        "input_border": "#315b8f",
+        "input_text": "#eaf4ff",
+        "input_label": "#c9dcf3",
+        "expander_text": "#d7e8fa",
+        "body_text": "#d8e7f7",
+        "heading_text": "#f3f8ff",
+        "button_bg": "linear-gradient(135deg, #1d4ed8, #0f766e)",
+        "button_text": "#f8fbff",
+        "button_border": "rgba(125, 211, 252, 0.24)",
     },
 }
 theme = theme_tokens.get(theme_mode, theme_tokens["Light"])
@@ -1105,6 +1115,26 @@ base_css = """
 .section-header__subtitle {
     font-size: 0.95rem;
     color: __SECTION_SUBTITLE__;
+}
+.stApp,
+.stApp p,
+.stApp li,
+.stApp div[data-testid="stMarkdownContainer"] p,
+.stApp [data-testid="stCaptionContainer"] {
+    color: __BODY_TEXT__;
+}
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp h5,
+.stApp h6,
+.stMarkdown h1,
+.stMarkdown h2,
+.stMarkdown h3,
+.stMarkdown h4 {
+    color: __HEADING_TEXT__;
+    letter-spacing: -0.01em;
 }
 .watchlist-alert-card {
     background: __CARD_BG__;
@@ -1228,6 +1258,9 @@ base_css = """
 [data-testid="stNumberInput"] svg {
     fill: __INPUT_TEXT__;
 }
+[data-baseweb="select"] [data-testid="stMarkdownContainer"] p {
+    color: __INPUT_TEXT__;
+}
 label,
 [data-testid="stWidgetLabel"],
 .stRadio label,
@@ -1238,6 +1271,16 @@ details summary,
 [data-testid="stExpander"] summary,
 [data-testid="stExpander"] details summary p {
     color: __EXPANDER_TEXT__;
+}
+.stButton > button {
+    background: __BUTTON_BG__;
+    color: __BUTTON_TEXT__;
+    border: 1px solid __BUTTON_BORDER__;
+    box-shadow: 0 10px 24px rgba(8, 15, 28, 0.18);
+}
+.stButton > button:hover {
+    filter: brightness(1.05);
+    border-color: __BUTTON_BORDER__;
 }
 </style>
 """
@@ -1274,6 +1317,11 @@ theme_css = (
     .replace("__INPUT_TEXT__", theme["input_text"])
     .replace("__INPUT_LABEL__", theme["input_label"])
     .replace("__EXPANDER_TEXT__", theme["expander_text"])
+    .replace("__BODY_TEXT__", theme["body_text"])
+    .replace("__HEADING_TEXT__", theme["heading_text"])
+    .replace("__BUTTON_BG__", theme["button_bg"])
+    .replace("__BUTTON_TEXT__", theme["button_text"])
+    .replace("__BUTTON_BORDER__", theme["button_border"])
 )
 st.markdown(theme_css, unsafe_allow_html=True)
 
