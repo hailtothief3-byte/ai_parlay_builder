@@ -1427,6 +1427,32 @@ header[data-testid="stHeader"] [role="button"]:hover,
     border-radius: 18px;
     box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
+[data-testid="stMetricLabel"] {
+    white-space: normal;
+}
+[data-testid="stMetricValue"] {
+    font-size: clamp(2rem, 2vw, 3.1rem);
+    line-height: 1.08;
+}
+[data-testid="stMetricValue"] > div {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    word-break: break-word;
+}
+@media (max-width: 1200px) {
+    [data-testid="stMetric"] {
+        padding: 0.8rem 0.85rem;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: clamp(1.7rem, 3vw, 2.6rem);
+    }
+}
+@media (max-width: 860px) {
+    [data-testid="stMetricValue"] {
+        font-size: clamp(1.45rem, 4.6vw, 2.1rem);
+    }
+}
 [data-testid="stDataFrame"] {
     background: __TABLE_BG__;
     border-radius: 18px;
