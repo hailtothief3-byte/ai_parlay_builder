@@ -2566,7 +2566,34 @@ with tab5:
             else:
                 st.info("No open ticket-linked journal entries were ready to settle.")
             st.rerun()
-        st.dataframe(compact_numeric_table(journal_df), use_container_width=True)
+        journal_display = journal_df.copy()
+        journal_display["summary"] = journal_display.apply(
+            lambda row: " | ".join(
+                part
+                for part in [
+                    str(row.get("label", "")).strip(),
+                    str(row.get("entry_type", "")).strip().replace("_", " ").title(),
+                    str(row.get("status", "")).strip().title(),
+                ]
+                if part and part.lower() != "nan"
+            ),
+            axis=1,
+        )
+        journal_columns = [
+            col
+            for col in [
+                "summary",
+                "stake_dollars",
+                "stake_units",
+                "realized_profit_dollars",
+                "suggested_stake_dollars",
+                "ticket_id",
+                "resolved_at",
+                "created_at",
+            ]
+            if col in journal_display.columns
+        ]
+        st.dataframe(compact_numeric_table(prettify_table_headers(journal_display[journal_columns])), use_container_width=True)
         open_entries = journal_df[journal_df["status"] == "open"].copy()
         if not open_entries.empty:
             selected_journal_id = st.selectbox(
