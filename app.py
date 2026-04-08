@@ -2044,6 +2044,18 @@ with tab3:
                 candidates = candidates[candidates["confidence"] >= min_confidence].copy()
                 candidates = candidates.sort_values(["confidence", "edge"], ascending=False)
 
+            st.info(
+                (
+                    f"Building from {len(candidates)} live candidate rows in the `{parlay_candidate_pool}` pool."
+                    if not candidates.empty
+                    else (
+                        "Watchlist alert pool is empty right now. Adjust watchlist thresholds or switch back to all live edges."
+                        if parlay_candidate_pool == "Watchlist alerts"
+                        else "No live edges currently meet the selected confidence threshold. Lower the threshold or sync new market data."
+                    )
+                )
+            )
+
             if parlay_candidate_pool == "Watchlist alerts" and candidates.empty:
                 st.warning("No watchlist alerts currently meet the saved thresholds. Adjust the thresholds or use all live edges.")
             elif parlay_candidate_pool == "Watchlist alerts":
@@ -2194,6 +2206,15 @@ with tab3:
                 allow_same_team=allow_same_team,
                 style=style,
             ),
+        )
+
+        total_demo_predictions = len(demo_bundle.predictions)
+        st.info(
+            (
+                f"Building from {total_demo_predictions} demo predictions using the `{style}` profile."
+                if total_demo_predictions
+                else "No demo predictions are available for this sport right now."
+            )
         )
 
         if parlay.empty:
