@@ -115,6 +115,11 @@ def get_dfs_slip_adapters() -> list[dict]:
     return [asdict(adapter) for adapter in DFS_SLIP_ADAPTERS]
 
 
+def get_dfs_adapter_by_key(adapter_key: str) -> dict | None:
+    adapter = next((item for item in DFS_SLIP_ADAPTERS if item.key == adapter_key), None)
+    return asdict(adapter) if adapter else None
+
+
 def recommend_dfs_slip_adapter(card_df: pd.DataFrame, style_label: str = "") -> dict:
     if card_df.empty:
         adapter = DFS_SLIP_ADAPTERS[0]

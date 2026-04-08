@@ -15,6 +15,7 @@ from services.dfs_slip_service import (
     format_dfs_slip_json,
     format_dfs_slip_payload,
     format_dfs_slip_text,
+    get_dfs_adapter_by_key,
     get_dfs_slip_adapters,
     recommend_dfs_slip_adapter,
 )
@@ -817,6 +818,15 @@ def ticket_looks_like_dfs(ticket_row: pd.Series | None, legs_df: pd.DataFrame) -
             if lowered and any(token in lowered for token in adapter_tokens):
                 return True
     return False
+
+
+def promote_saved_ticket_to_parlay_lab(ticket_id: int, ticket_name: str, ticket_row: pd.Series, legs_df: pd.DataFrame) -> None:
+    st.session_state["dashboard_focus_target"] = "parlay_lab"
+    st.session_state["parlay_source_session_override"] = "saved_ticket"
+    st.session_state["parlay_saved_ticket_id"] = int(ticket_id)
+    st.session_state["parlay_saved_ticket_name"] = str(ticket_name)
+    st.session_state["parlay_saved_ticket_target"] = str(ticket_row.get("dfs_target_app") or "")
+    st.session_state["parlay_saved_ticket_payload"] = legs_df.to_dict(orient="records")
 
 def compact_numeric_table(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -2483,6 +2493,15 @@ with tab3:
     render_section_header("Parlay Lab", "Build live or demo tickets with clearer stake planning and model context.")
     if st.session_state.get("dashboard_focus_target") == "parlay_lab":
         st.success("Notification focus is set to Parlay Lab. This is the right place to turn strong watchlist alerts into a draft ticket.")
+    if st.session_state.get("parlay_source_session_override") == "saved_ticket":
+        saved_ticket_name = st.session_state.get("parlay_saved_ticket_name", "Saved ticket")
+        saved_ticket_target = st.session_state.get("parlay_saved_ticket_target", "")
+        saved_ticket_payload = st.session_state.get("parlay_saved_ticket_payload", [])
+        target_suffix = f" for `{saved_ticket_target}`" if saved_ticket_target else ""
+        st.info(
+            f"Resumed from saved ticket `{saved_ticket_name}`{target_suffix}. "
+            f"{len(saved_ticket_payload)} saved legs are available for rebuild or comparison in this session."
+        )
     source = st.radio(
         "Parlay Source",
         ["Live edges", "Demo predictions"],
@@ -3497,6 +3516,7 @@ with tab5:
         selected_ticket_meta = ticket_summary_df[ticket_summary_df["ticket_id"] == selected_ticket_id].head(1)
         if not selected_ticket_meta.empty:
             ticket_row = selected_ticket_meta.iloc[0]
+            dfs_adapter = get_dfs_adapter_by_key(str(ticket_row.get("dfs_target_key") or ""))
             snapshot_col1, snapshot_col2, snapshot_col3, snapshot_col4 = st.columns(4)
             snapshot_col1.metric("Ticket", str(ticket_row["name"]))
             snapshot_col2.metric("Source", str(ticket_row["source"]).replace("_", " ").title())
@@ -3509,7 +3529,34 @@ with tab5:
             snapshot_col7.metric("Resolved legs", str(ticket_row["resolved_legs"]))
             snapshot_col8.metric("Open legs", str(ticket_row["open_legs"]))
             if str(ticket_row.get("dfs_target_app") or "").strip():
-                st.caption(f"Saved DFS destination: {ticket_row['dfs_target_app']}")
+                if dfs_adapter:
+                    st.markdown(
+                        f"""
+                        <div style="
+                            display:flex;
+                            align-items:center;
+                            gap:0.55rem;
+                            margin:0.4rem 0 0.15rem;
+                        ">
+                            <span style="
+                                display:inline-flex;
+                                align-items:center;
+                                justify-content:center;
+                                width:1.8rem;
+                                height:1.8rem;
+                                border-radius:999px;
+                                background:{dfs_adapter['accent']};
+                                color:#f8fbff;
+                                font-size:0.76rem;
+                                font-weight:800;
+                            ">{dfs_adapter['brand_mark']}</span>
+                            <span style="font-size:0.92rem;color:#9fc4e8;">Saved DFS destination: {ticket_row['dfs_target_app']}</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.caption(f"Saved DFS destination: {ticket_row['dfs_target_app']}")
 
         if not selected_legs.empty:
             saved_ticket_display = prefer_player_display(annotate_player_display(selected_legs.copy()))
@@ -3551,6 +3598,16 @@ with tab5:
                 )
             else:
                 st.dataframe(compact_numeric_table(saved_ticket_display), use_container_width=True)
+
+            if st.button("Use This Saved Ticket In Parlay Lab", use_container_width=True, key=f"use_saved_ticket_{int(selected_ticket_id)}"):
+                promote_saved_ticket_to_parlay_lab(
+                    ticket_id=int(selected_ticket_id),
+                    ticket_name=str(ticket_row.get("name") or f"Ticket {int(selected_ticket_id)}"),
+                    ticket_row=ticket_row,
+                    legs_df=selected_legs,
+                )
+                st.success("Sent this saved ticket back to Parlay Lab.")
+                st.rerun()
 
             if ticket_looks_like_dfs(ticket_row, selected_legs):
                 st.markdown("#### Rebuild For Another DFS App")
