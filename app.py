@@ -702,12 +702,16 @@ def render_dfs_autoslip_panel(
     meta_col1, meta_col2, meta_col3 = st.columns(3)
     meta_col1.metric("Target", target_label)
     meta_col2.metric("Legs", str(payload["leg_count"]))
-    meta_col3.metric("Handoff", "Public prefill" if adapter["supports_public_prefill"] else "Launch + payload")
+    meta_col3.metric("Prefill", "Available" if adapter["supports_public_prefill"] else "Not public")
 
     if adapter["supports_public_prefill"]:
-        st.success("This adapter is configured for direct external prefill.")
+        st.success("This target supports direct external prefill. Submission still happens on the destination platform.")
     else:
-        st.info(adapter["notes"])
+        st.info(f"{adapter['notes']} Submission still happens on the destination platform.")
+
+    st.caption(
+        "AI Parlay Builder generates the recommended DFS slip here. If the target app exposes public prefill support, we can send it preloaded. Otherwise, the app opens with a ready-to-load payload and the user completes submission there."
+    )
 
     launch_col, payload_col, json_col = st.columns(3)
     launch_col.link_button(f"Open {target_label}", str(adapter["launch_url"]), use_container_width=True)
@@ -729,7 +733,7 @@ def render_dfs_autoslip_panel(
     )
 
     with st.expander("Ready-to-load payload", expanded=False):
-        st.caption("Use this when the target app supports easy manual recreation, sharing, or copy-tail workflows but does not publish an external prefill API.")
+        st.caption("Use this when the target app supports easy manual recreation, sharing, or copy-tail workflows but does not publish a public external prefill API.")
         st.text_area(
             "Slip summary",
             value=slip_payload_text,
@@ -739,13 +743,14 @@ def render_dfs_autoslip_panel(
         st.code(slip_json, language="json")
 
     with st.expander("Supported DFS adapters", expanded=False):
-        adapter_df = pd.DataFrame(adapters)[["label", "handoff_mode", "supports_public_prefill", "supports_web_entry", "notes"]]
+        adapter_df = pd.DataFrame(adapters)[["label", "handoff_mode", "supports_public_prefill", "supports_web_entry", "submission_mode", "notes"]]
         adapter_df = adapter_df.rename(
             columns={
                 "label": "App",
                 "handoff_mode": "Handoff mode",
                 "supports_public_prefill": "Public prefill",
                 "supports_web_entry": "Web entry",
+                "submission_mode": "Submission",
                 "notes": "Notes",
             }
         )

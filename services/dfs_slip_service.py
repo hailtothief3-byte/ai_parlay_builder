@@ -17,6 +17,7 @@ class DfsSlipAdapter:
     handoff_mode: str
     supports_public_prefill: bool
     supports_web_entry: bool
+    submission_mode: str
     notes: str
 
 
@@ -28,6 +29,7 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
         supports_web_entry=False,
+        submission_mode="submit_on_destination",
         notes="Official app flow is available, but no public external prefill API was found. Use the generated slip payload after launch.",
     ),
     DfsSlipAdapter(
@@ -37,6 +39,7 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
         supports_web_entry=True,
+        submission_mode="submit_on_destination",
         notes="Underdog supports Pick'em entry flow, but no public external prefill API was found. Use the generated slip payload after launch.",
     ),
     DfsSlipAdapter(
@@ -46,6 +49,7 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
         supports_web_entry=False,
+        submission_mode="submit_on_destination",
         notes="No public external prefill API was found. Use the generated slip payload after launch.",
     ),
     DfsSlipAdapter(
@@ -55,6 +59,7 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
         supports_web_entry=False,
+        submission_mode="submit_on_destination",
         notes="Betr Picks is supported in the adapter list, but no public external prefill API was found. Use the generated slip payload after launch.",
     ),
     DfsSlipAdapter(
@@ -64,6 +69,7 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
         supports_web_entry=True,
+        submission_mode="submit_on_destination",
         notes="ParlayPlay supports web entry, but no public external prefill API was found. Use the generated slip payload after launch.",
     ),
     DfsSlipAdapter(
@@ -73,6 +79,7 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
         supports_web_entry=True,
+        submission_mode="submit_on_destination",
         notes="Dabble supports pick entries, but no public external prefill API was found. Use the generated slip payload after launch.",
     ),
     DfsSlipAdapter(
@@ -82,6 +89,7 @@ DFS_SLIP_ADAPTERS: tuple[DfsSlipAdapter, ...] = (
         handoff_mode="launch_and_copy",
         supports_public_prefill=False,
         supports_web_entry=True,
+        submission_mode="submit_on_destination",
         notes="DraftKings Pick6 has an official web experience, but no public external prefill API was found. Use the generated slip payload after launch.",
     ),
 )
