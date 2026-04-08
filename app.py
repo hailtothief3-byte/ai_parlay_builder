@@ -19,7 +19,7 @@ from services.dfs_slip_service import (
     get_dfs_slip_adapters,
     recommend_dfs_slip_adapter,
 )
-from services.analytics import build_calibration_summary, build_clv_backtest, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_sportsbook_summary
+from services.analytics import build_calibration_summary, build_clv_backtest, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_sportsbook_summary
 from services.board_service import get_latest_board
 from services.bankroll_service import annotate_stake_recommendations, recommend_parlay_stake
 from services.bankroll_journal_service import add_journal_entry, build_bankroll_kpis, build_bankroll_summary, get_journal_entries, settle_journal_entry, sync_ticket_journal_entries
@@ -1234,6 +1234,20 @@ def build_smart_learning_display(df: pd.DataFrame, rename_map: dict[str, str], p
         if column in display.columns:
             display[column] = pd.to_numeric(display[column], errors="coerce").round(2)
     return compact_numeric_table(display.rename(columns=rename_map))
+
+
+def format_source_label(value: str) -> str:
+    label_map = {
+        "smart_pick_engine": "Smart Pick Engine",
+        "edge_scanner": "Edge Scanner",
+        "manual_track": "Manual Track",
+        "manual_result": "Manual Result",
+        "sportsgameodds_auto_settle": "SportsGameOdds Auto-Settle",
+    }
+    raw = str(value or "").strip()
+    if raw in label_map:
+        return label_map[raw]
+    return raw.replace("_", " ").title()
 
 
 def build_watchlist_option_labels(df: pd.DataFrame) -> dict[str, int]:
@@ -3456,6 +3470,63 @@ with tab5:
                     value_columns=["confidence_bucket_roi_per_pick", "confidence_bucket_avg_confidence"],
                 )
                 st.dataframe(confidence_learning_display, use_container_width=True, hide_index=True)
+
+    st.markdown("### Source Performance")
+    source_summary_df = build_true_source_summary(graded_df)
+    if source_summary_df.empty:
+        render_empty_state(
+            "No source comparison yet",
+            "Grade picks from different workflows to compare Smart Pick Engine performance against the legacy edge workflow.",
+            tone="info",
+        )
+    else:
+        source_summary_display = source_summary_df.copy()
+        source_summary_display["source"] = source_summary_display["source"].map(format_source_label)
+        source_summary_display["hit_rate"] = (source_summary_display["hit_rate"] * 100).round(1)
+        source_summary_display["avg_model_prob"] = (source_summary_display["avg_model_prob"] * 100).round(1)
+        source_summary_display["avg_edge"] = (source_summary_display["avg_edge"] * 100).round(1)
+        source_summary_display["avg_confidence"] = source_summary_display["avg_confidence"].round(1)
+        source_summary_display["profit_units"] = source_summary_display["profit_units"].round(2)
+        source_summary_display["roi_per_pick"] = source_summary_display["roi_per_pick"].round(2)
+        source_summary_display = source_summary_display.rename(
+            columns={
+                "source": "Workflow Source",
+                "picks": "Tracked Picks",
+                "hit_rate": "Hit Rate %",
+                "avg_model_prob": "Avg Model %",
+                "avg_edge": "Avg Edge %",
+                "avg_confidence": "Avg Confidence",
+                "profit_units": "Profit Units",
+                "roi_per_pick": "Units Per Pick",
+            }
+        )
+        st.dataframe(compact_numeric_table(source_summary_display), use_container_width=True, hide_index=True)
+
+        smart_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine"].head(1)
+        legacy_row = source_summary_df[source_summary_df["source"] == "edge_scanner"].head(1)
+        if not smart_row.empty and not legacy_row.empty:
+            smart_row = smart_row.iloc[0]
+            legacy_row = legacy_row.iloc[0]
+            compare_col1, compare_col2, compare_col3, compare_col4 = st.columns(4)
+            compare_col1.metric(
+                "Smart Hit Rate Lift",
+                f"{(float(smart_row['hit_rate']) - float(legacy_row['hit_rate'])) * 100:+.1f} pts",
+            )
+            compare_col2.metric(
+                "Smart Unit Lift",
+                f"{float(smart_row['profit_units']) - float(legacy_row['profit_units']):+.2f}u",
+            )
+            compare_col3.metric(
+                "Smart Units/Pick Lift",
+                f"{float(smart_row['roi_per_pick']) - float(legacy_row['roi_per_pick']):+.2f}",
+            )
+            compare_col4.metric(
+                "Sample Size",
+                f"{int(smart_row['picks'])} vs {int(legacy_row['picks'])}",
+            )
+            st.caption(
+                "This comparison uses graded picks only. As more smart-ranked picks settle, the signal here will become more reliable."
+            )
 
     if auto_settle_payload:
         recorded_at = str(auto_settle_payload.get("recorded_at") or "")

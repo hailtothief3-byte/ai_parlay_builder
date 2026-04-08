@@ -175,6 +175,27 @@ def build_true_confidence_summary(backtest_df: pd.DataFrame) -> pd.DataFrame:
     return summary[summary["picks"] > 0]
 
 
+def build_true_source_summary(backtest_df: pd.DataFrame) -> pd.DataFrame:
+    if backtest_df.empty or "source" not in backtest_df.columns:
+        return pd.DataFrame()
+
+    summary = (
+        backtest_df.groupby("source", observed=False)
+        .agg(
+            picks=("player", "count"),
+            hit_rate=("won", "mean"),
+            avg_model_prob=("model_prob", "mean"),
+            avg_edge=("edge", "mean"),
+            avg_confidence=("confidence", "mean"),
+            profit_units=("profit_units", "sum"),
+            roi_per_pick=("profit_units", "mean"),
+        )
+        .reset_index()
+        .sort_values(["profit_units", "hit_rate", "picks"], ascending=[False, False, False])
+    )
+    return summary[summary["picks"] > 0]
+
+
 def build_ticket_benchmark_summary(graded_picks_df: pd.DataFrame, leg_count: int) -> dict[str, float | int | None]:
     if graded_picks_df.empty or leg_count <= 0:
         return {
