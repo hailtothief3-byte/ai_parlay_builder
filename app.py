@@ -237,11 +237,19 @@ def render_section_header(title: str, subtitle: str) -> None:
 
 
 def render_empty_state(title: str, body: str, tone: str = "neutral") -> None:
-    tone_map = {
-        "neutral": ("#334155", "#f8fafc", "#e2e8f0"),
-        "info": ("#1d4ed8", "#eff6ff", "#bfdbfe"),
-        "warning": ("#92400e", "#fffbeb", "#fde68a"),
-    }
+    tone_map = (
+        {
+            "neutral": ("#dbe4f0", "#111827", "#334155"),
+            "info": ("#93c5fd", "#0f172a", "#1d4ed8"),
+            "warning": ("#fcd34d", "#1f2937", "#92400e"),
+        }
+        if theme_mode == "Dark"
+        else {
+            "neutral": ("#334155", "#f8fafc", "#e2e8f0"),
+            "info": ("#1d4ed8", "#eff6ff", "#bfdbfe"),
+            "warning": ("#92400e", "#fffbeb", "#fde68a"),
+        }
+    )
     text_color, bg_color, border_color = tone_map.get(tone, tone_map["neutral"])
     st.markdown(
         f"""
@@ -2554,12 +2562,21 @@ with tab5:
     ]
 
     st.markdown("### Workflow Status")
-    status_tones = {
-        "Ready": {"bg": "#e8f7ef", "fg": "#157347", "border": "#b7e4c7"},
-        "Pending": {"bg": "#f7f4ea", "fg": "#8a6d1d", "border": "#ead9a7"},
-        "Needs action": {"bg": "#fbeaea", "fg": "#b42318", "border": "#f3c4c4"},
-        "Clear": {"bg": "#edf4ff", "fg": "#1d4ed8", "border": "#c7dbff"},
-    }
+    status_tones = (
+        {
+            "Ready": {"bg": "#0f2b1f", "fg": "#8ee3b7", "border": "#1f6b4f", "card": "#0f1722", "title": "#e5eef8", "body": "#a7b6c8"},
+            "Pending": {"bg": "#33270f", "fg": "#f5d27a", "border": "#7c5a18", "card": "#0f1722", "title": "#e5eef8", "body": "#a7b6c8"},
+            "Needs action": {"bg": "#33161a", "fg": "#ff9d9d", "border": "#8b3a45", "card": "#0f1722", "title": "#e5eef8", "body": "#a7b6c8"},
+            "Clear": {"bg": "#10233d", "fg": "#8ab4ff", "border": "#315b9b", "card": "#0f1722", "title": "#e5eef8", "body": "#a7b6c8"},
+        }
+        if theme_mode == "Dark"
+        else {
+            "Ready": {"bg": "#e8f7ef", "fg": "#157347", "border": "#b7e4c7", "card": "#ffffffcc", "title": "#17324d", "body": "#526273"},
+            "Pending": {"bg": "#f7f4ea", "fg": "#8a6d1d", "border": "#ead9a7", "card": "#ffffffcc", "title": "#17324d", "body": "#526273"},
+            "Needs action": {"bg": "#fbeaea", "fg": "#b42318", "border": "#f3c4c4", "card": "#ffffffcc", "title": "#17324d", "body": "#526273"},
+            "Clear": {"bg": "#edf4ff", "fg": "#1d4ed8", "border": "#c7dbff", "card": "#ffffffcc", "title": "#17324d", "body": "#526273"},
+        }
+    )
     status_cols = st.columns(len(results_status_rows))
     for idx, row in enumerate(results_status_rows):
         tone = status_tones.get(row["Status"], status_tones["Pending"])
@@ -2569,11 +2586,11 @@ with tab5:
                 border:1px solid {tone['border']};
                 border-radius:18px;
                 padding:16px 16px 14px 16px;
-                background:#ffffffcc;
+                background:{tone['card']};
                 min-height:146px;
             ">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-                    <div style="font-weight:700;color:#17324d;font-size:1rem;">{row['Workflow']}</div>
+                    <div style="font-weight:700;color:{tone['title']};font-size:1rem;">{row['Workflow']}</div>
                     <span style="
                         background:{tone['bg']};
                         color:{tone['fg']};
@@ -2585,7 +2602,7 @@ with tab5:
                         white-space:nowrap;
                     ">{row['Status']}</span>
                 </div>
-                <div style="margin-top:12px;color:#526273;font-size:0.93rem;line-height:1.45;">
+                <div style="margin-top:12px;color:{tone['body']};font-size:0.93rem;line-height:1.45;">
                     {row['Detail']}
                 </div>
             </div>
