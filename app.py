@@ -2120,14 +2120,11 @@ with tab3:
                     [
                         "leg_rank",
                         "summary",
-                        "sportsbook",
-                        "projection",
                         "model_prob",
-                        "implied_prob",
                         "edge",
                         "confidence",
-                        "recommended_units",
                         "recommended_stake",
+                        "sportsbook",
                         "coverage_status",
                     ]
                     if parlay_view_mode == "Compact"
@@ -2276,7 +2273,6 @@ with tab3:
                     col for col in (
                         [
                             "leg_rank",
-                            "sport",
                             "leg_summary",
                             "predicted_value",
                             "confidence",
