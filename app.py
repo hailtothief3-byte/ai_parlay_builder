@@ -10,6 +10,13 @@ from db import init_db
 from ingestion.providers import get_provider
 from sports_config import get_market_coverage, get_market_coverage_map, get_sport_config, get_sport_labels, get_sport_provider_name, is_live_sync_enabled, resolve_live_keys_for_label
 from services.demo_seed import clear_demo_live_data, seed_all_demo_live_data, seed_demo_live_data
+from services.dfs_slip_service import (
+    build_dfs_slip_payload,
+    format_dfs_slip_json,
+    format_dfs_slip_payload,
+    format_dfs_slip_text,
+    get_dfs_slip_adapters,
+)
 from services.analytics import build_calibration_summary, build_clv_backtest, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_sportsbook_summary
 from services.board_service import get_latest_board
 from services.bankroll_service import annotate_stake_recommendations, recommend_parlay_stake
@@ -657,6 +664,92 @@ def render_prop_card(card: dict) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_dfs_autoslip_panel(
+    card_df: pd.DataFrame,
+    sport_label: str,
+    source_label: str,
+    style_label: str,
+    key_prefix: str,
+) -> None:
+    if card_df.empty:
+        return
+
+    adapters = get_dfs_slip_adapters()
+    adapter_options = {adapter["label"]: adapter for adapter in adapters}
+    default_label = "PrizePicks" if "PrizePicks" in adapter_options else next(iter(adapter_options))
+
+    st.markdown("### DFS Auto-Slip")
+    target_label = st.selectbox(
+        "DFS target app",
+        options=list(adapter_options.keys()),
+        index=list(adapter_options.keys()).index(default_label),
+        key=f"{key_prefix}_dfs_target_app",
+    )
+    adapter = adapter_options[target_label]
+    payload = build_dfs_slip_payload(
+        card_df=card_df,
+        adapter_key=str(adapter["key"]),
+        sport_label=sport_label,
+        source_label=source_label,
+        style_label=style_label,
+    )
+    slip_text = format_dfs_slip_text(card_df, target_label)
+    slip_payload_text = format_dfs_slip_payload(payload)
+    slip_json = format_dfs_slip_json(payload)
+
+    meta_col1, meta_col2, meta_col3 = st.columns(3)
+    meta_col1.metric("Target", target_label)
+    meta_col2.metric("Legs", str(payload["leg_count"]))
+    meta_col3.metric("Handoff", "Public prefill" if adapter["supports_public_prefill"] else "Launch + payload")
+
+    if adapter["supports_public_prefill"]:
+        st.success("This adapter is configured for direct external prefill.")
+    else:
+        st.info(adapter["notes"])
+
+    launch_col, payload_col, json_col = st.columns(3)
+    launch_col.link_button(f"Open {target_label}", str(adapter["launch_url"]), use_container_width=True)
+    payload_col.download_button(
+        "Download slip text",
+        data=slip_text,
+        file_name=f"{sport_label.lower()}_{adapter['key']}_dfs_slip.txt",
+        mime="text/plain",
+        use_container_width=True,
+        key=f"{key_prefix}_dfs_download_text",
+    )
+    json_col.download_button(
+        "Download payload JSON",
+        data=slip_json,
+        file_name=f"{sport_label.lower()}_{adapter['key']}_dfs_slip.json",
+        mime="application/json",
+        use_container_width=True,
+        key=f"{key_prefix}_dfs_download_json",
+    )
+
+    with st.expander("Ready-to-load payload", expanded=False):
+        st.caption("Use this when the target app supports easy manual recreation, sharing, or copy-tail workflows but does not publish an external prefill API.")
+        st.text_area(
+            "Slip summary",
+            value=slip_payload_text,
+            height=180,
+            key=f"{key_prefix}_dfs_payload_text",
+        )
+        st.code(slip_json, language="json")
+
+    with st.expander("Supported DFS adapters", expanded=False):
+        adapter_df = pd.DataFrame(adapters)[["label", "handoff_mode", "supports_public_prefill", "supports_web_entry", "notes"]]
+        adapter_df = adapter_df.rename(
+            columns={
+                "label": "App",
+                "handoff_mode": "Handoff mode",
+                "supports_public_prefill": "Public prefill",
+                "supports_web_entry": "Web entry",
+                "notes": "Notes",
+            }
+        )
+        st.dataframe(adapter_df, use_container_width=True, hide_index=True)
 
 def compact_numeric_table(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -2506,6 +2599,14 @@ with tab3:
                     ]))),
                     use_container_width=True,
                 )
+                if is_dfs:
+                    render_dfs_autoslip_panel(
+                        card_df=parlay_df,
+                        sport_label=sport_label,
+                        source_label="Live DFS edges",
+                        style_label=parlay_candidate_pool,
+                        key_prefix=f"{sport_label}_live_dfs_autoslip",
+                    )
         if st.button("Save Live Ticket", use_container_width=True):
                     ticket_id = save_ticket(
                         ticket_name=live_ticket_name,
@@ -2657,6 +2758,14 @@ with tab3:
             if "model_prob" in demo_parlay_display.columns:
                 demo_parlay_display["model_prob"] = (pd.to_numeric(demo_parlay_display["model_prob"], errors="coerce") * 100).round(2)
             st.dataframe(compact_numeric_table(prettify_table_headers(demo_parlay_display)), use_container_width=True)
+            if is_dfs:
+                render_dfs_autoslip_panel(
+                    card_df=parlay,
+                    sport_label=sport_label,
+                    source_label="Demo DFS predictions",
+                    style_label=style,
+                    key_prefix=f"{sport_label}_demo_dfs_autoslip",
+                )
             if st.button("Save Demo Ticket", use_container_width=True):
                 ticket_id = save_ticket(
                     ticket_name=demo_ticket_name,
