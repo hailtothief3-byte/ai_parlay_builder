@@ -542,33 +542,50 @@ def build_notification_center(
 def render_notification_notice(notice: dict, key_suffix: str, sport_label: str) -> None:
     severity_map = (
         {
-            "high": ("#ffb4b4", "#33161a", "#8b3a45"),
-            "medium": ("#f5d27a", "#33270f", "#7c5a18"),
-            "low": ("#8ab4ff", "#10233d", "#315b9b"),
+            "high": {"fg": "#ffd7d7", "bg": "linear-gradient(135deg, rgba(56, 24, 35, 0.96), rgba(91, 30, 48, 0.92))", "border": "#a44d68", "pill_bg": "rgba(255, 159, 181, 0.14)", "pill_text": "#ffb7cb"},
+            "medium": {"fg": "#ffe8b3", "bg": "linear-gradient(135deg, rgba(51, 39, 15, 0.95), rgba(84, 60, 18, 0.92))", "border": "#a77a26", "pill_bg": "rgba(245, 210, 122, 0.14)", "pill_text": "#f9d98d"},
+            "low": {"fg": "#dceeff", "bg": "linear-gradient(135deg, rgba(13, 33, 57, 0.97), rgba(21, 55, 97, 0.93))", "border": "#3d79cb", "pill_bg": "rgba(125, 211, 252, 0.12)", "pill_text": "#9ddcff"},
         }
         if theme_mode == "Dark"
         else {
-            "high": ("#7f1d1d", "#fee2e2", "#fecaca"),
-            "medium": ("#92400e", "#fef3c7", "#fde68a"),
-            "low": ("#1e3a8a", "#dbeafe", "#bfdbfe"),
+            "high": {"fg": "#7f1d1d", "bg": "#fee2e2", "border": "#fecaca", "pill_bg": "#fff1f2", "pill_text": "#9f1239"},
+            "medium": {"fg": "#92400e", "bg": "#fef3c7", "border": "#fde68a", "pill_bg": "#fffbeb", "pill_text": "#a16207"},
+            "low": {"fg": "#1e3a8a", "bg": "#dbeafe", "border": "#bfdbfe", "pill_bg": "#eff6ff", "pill_text": "#2563eb"},
         }
     )
-    text_color, bg_color, border_color = severity_map.get(
+    tone = severity_map.get(
         str(notice.get("severity") or "low"),
-        ("#dbe4f0", "#1f2937", "#334155") if theme_mode == "Dark" else ("#374151", "#f3f4f6", "#e5e7eb"),
+        {"fg": "#dbe4f0", "bg": "#1f2937", "border": "#334155", "pill_bg": "#0f172a", "pill_text": "#dbe4f0"}
+        if theme_mode == "Dark"
+        else {"fg": "#374151", "bg": "#f3f4f6", "border": "#e5e7eb", "pill_bg": "#ffffff", "pill_text": "#374151"},
     )
     st.markdown(
         f"""
         <div style="
-            background:{bg_color};
-            border:1px solid {border_color};
-            color:{text_color};
-            border-radius:16px;
-            padding:0.85rem 0.95rem;
+            background:{tone['bg']};
+            border:1px solid {tone['border']};
+            color:{tone['fg']};
+            border-radius:18px;
+            padding:0.9rem 1rem;
             margin-bottom:0.6rem;
+            box-shadow:0 14px 30px rgba(2, 8, 23, 0.16);
         ">
-            <div style="font-size:0.95rem;font-weight:800;margin-bottom:0.15rem;">{notice['title']}</div>
-            <div style="font-size:0.9rem;line-height:1.45;">{notice['message']}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:0.8rem;margin-bottom:0.35rem;">
+                <div style="font-size:0.95rem;font-weight:800;">{notice['title']}</div>
+                <span style="
+                    display:inline-block;
+                    padding:0.24rem 0.55rem;
+                    border-radius:999px;
+                    background:{tone['pill_bg']};
+                    color:{tone['pill_text']};
+                    font-size:0.74rem;
+                    font-weight:800;
+                    text-transform:uppercase;
+                    letter-spacing:0.05em;
+                    white-space:nowrap;
+                ">{str(notice.get('severity') or 'low')}</span>
+            </div>
+            <div style="font-size:0.9rem;line-height:1.5;opacity:0.96;">{notice['message']}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -961,6 +978,9 @@ theme_tokens = {
         "hero_pill_border": "rgba(255,255,255,0.09)",
         "header_bg": "rgba(252, 251, 248, 0.88)",
         "header_border": "rgba(31, 41, 55, 0.06)",
+        "toolbar_text": "#526273",
+        "toolbar_icon": "#526273",
+        "toolbar_hover_bg": "rgba(38, 70, 83, 0.08)",
         "hero_text": "#f8fafc",
         "hero_subtitle": "rgba(248, 250, 252, 0.84)",
         "eyebrow": "#f4a261",
@@ -1002,6 +1022,9 @@ theme_tokens = {
         "hero_pill_border": "rgba(96, 165, 250, 0.20)",
         "header_bg": "rgba(8, 17, 31, 0.78)",
         "header_border": "rgba(96, 165, 250, 0.10)",
+        "toolbar_text": "#bfd6ef",
+        "toolbar_icon": "#d7e8fa",
+        "toolbar_hover_bg": "rgba(37, 99, 235, 0.14)",
         "hero_text": "#edf6ff",
         "hero_subtitle": "rgba(208, 225, 244, 0.88)",
         "eyebrow": "#7dd3fc",
@@ -1052,6 +1075,25 @@ header[data-testid="stHeader"] {
 }
 [data-testid="stToolbar"] {
     background: transparent;
+}
+header[data-testid="stHeader"] a,
+header[data-testid="stHeader"] button,
+header[data-testid="stHeader"] [role="button"],
+[data-testid="stToolbar"] a,
+[data-testid="stToolbar"] button {
+    color: __TOOLBAR_TEXT__;
+}
+header[data-testid="stHeader"] svg,
+[data-testid="stToolbar"] svg {
+    fill: __TOOLBAR_ICON__;
+}
+header[data-testid="stHeader"] a:hover,
+header[data-testid="stHeader"] button:hover,
+header[data-testid="stHeader"] [role="button"]:hover,
+[data-testid="stToolbar"] a:hover,
+[data-testid="stToolbar"] button:hover {
+    background: __TOOLBAR_HOVER_BG__;
+    border-radius: 10px;
 }
 .block-container {
     padding-top: 1.5rem;
@@ -1299,6 +1341,9 @@ theme_css = (
     base_css.replace("__APP_BG__", theme["app_bg"])
     .replace("__HEADER_BG__", theme["header_bg"])
     .replace("__HEADER_BORDER__", theme["header_border"])
+    .replace("__TOOLBAR_TEXT__", theme["toolbar_text"])
+    .replace("__TOOLBAR_ICON__", theme["toolbar_icon"])
+    .replace("__TOOLBAR_HOVER_BG__", theme["toolbar_hover_bg"])
     .replace("__HERO_BG__", theme["hero_bg"])
     .replace("__HERO_BRAND_BG__", theme["hero_brand_bg"])
     .replace("__HERO_BRAND_BORDER__", theme["hero_brand_border"])
