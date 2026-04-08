@@ -827,6 +827,25 @@ def ticket_looks_like_dfs(ticket_row: pd.Series | None, legs_df: pd.DataFrame) -
     return False
 
 
+def format_probability_bucket_label(bucket_value) -> str:
+    if bucket_value is None or (isinstance(bucket_value, float) and pd.isna(bucket_value)):
+        return ""
+    left = getattr(bucket_value, "left", None)
+    right = getattr(bucket_value, "right", None)
+    if left is not None and right is not None and pd.notna(left) and pd.notna(right):
+        return f"{float(left) * 100:.0f}% to {float(right) * 100:.0f}%"
+    raw_text = str(bucket_value).strip()
+    if raw_text.startswith("{") and "left" in raw_text and "right" in raw_text:
+        try:
+            normalized = json.loads(raw_text.replace("'", "\""))
+            left = float(normalized.get("left"))
+            right = float(normalized.get("right"))
+            return f"{left * 100:.0f}% to {right * 100:.0f}%"
+        except Exception:
+            return raw_text
+    return raw_text
+
+
 def promote_saved_ticket_to_parlay_lab(ticket_id: int, ticket_name: str, ticket_row: pd.Series, legs_df: pd.DataFrame) -> None:
     st.session_state["dashboard_focus_target"] = "parlay_lab"
     st.session_state["parlay_source_session_override"] = "saved_ticket"
@@ -1523,6 +1542,13 @@ label,
 .stRadio label,
 .stCheckbox label {
     color: __INPUT_LABEL__;
+    font-weight: 600;
+    opacity: 0.98;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+[data-testid="stWidgetLabel"] p,
+label p {
+    color: __INPUT_LABEL__ !important;
 }
 details summary,
 [data-testid="stExpander"] summary,
@@ -3893,11 +3919,22 @@ with tab6:
             calibration_df = build_calibration_summary(clv_backtest_df)
             if not calibration_df.empty:
                 display_calibration = calibration_df.copy()
+                display_calibration["prob_bucket"] = display_calibration["prob_bucket"].map(format_probability_bucket_label)
                 display_calibration["avg_model_prob"] = (display_calibration["avg_model_prob"] * 100).round(2)
                 display_calibration["clv_hit_rate"] = (display_calibration["clv_hit_rate"] * 100).round(2)
                 display_calibration["avg_edge"] = (display_calibration["avg_edge"] * 100).round(2)
                 display_calibration["avg_line_move"] = display_calibration["avg_line_move"].round(3)
-                st.dataframe(compact_numeric_table(display_calibration), use_container_width=True)
+                display_calibration = display_calibration.rename(
+                    columns={
+                        "prob_bucket": "Model Probability Range",
+                        "picks": "Tracked Picks",
+                        "avg_model_prob": "Avg Model %",
+                        "clv_hit_rate": "CLV Hit %",
+                        "avg_edge": "Avg Edge %",
+                        "avg_line_move": "Avg Line Move",
+                    }
+                )
+                st.dataframe(compact_numeric_table(display_calibration), use_container_width=True, hide_index=True)
 
 with tab7:
     render_section_header("Stats Import", "Feed the hybrid model with provider-derived history, optional APIs, or your own CSV snapshots.")
