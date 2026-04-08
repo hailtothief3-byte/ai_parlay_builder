@@ -1827,6 +1827,8 @@ with tab1:
 
 with tab2:
     render_section_header("Edge Scanner", "Rank live-supported props by model edge, confidence, and suggested stake size.")
+    if st.session_state.get("dashboard_focus_target") == "edge_scanner":
+        st.success("Workflow focus is set to Edge Scanner. This is the fastest place to save live edges for grading or watchlist review.")
     edge_df = pd.DataFrame()
 
     if live_sport_keys:
@@ -2348,6 +2350,8 @@ with tab5:
             "Workflow": "Tracked picks",
             "Status": "Ready" if not tracked_df.empty else "Pending",
             "Detail": f"{len(tracked_df)} tracked" if not tracked_df.empty else "Save live edges for grading to begin this queue.",
+            "ActionLabel": "Open Edge Scanner" if tracked_df.empty else "Open Results & Grading",
+            "ActionTarget": "edge_scanner" if tracked_df.empty else "results_grading",
         },
         {
             "Workflow": "Settlement queue",
@@ -2357,6 +2361,8 @@ with tab5:
                 if not unresolved_tracked_df.empty
                 else "No tracked picks are currently waiting for settlement."
             ),
+            "ActionLabel": "Review Settlements" if not unresolved_tracked_df.empty else "Stay Clear",
+            "ActionTarget": "results_grading",
         },
         {
             "Workflow": "Saved tickets",
@@ -2366,6 +2372,8 @@ with tab5:
                 if not ticket_summary_df.empty
                 else "Save a ticket from Parlay Lab to unlock ticket comparison and grading views."
             ),
+            "ActionLabel": "Open Results & Grading" if not ticket_summary_df.empty else "Open Parlay Lab",
+            "ActionTarget": "results_grading" if not ticket_summary_df.empty else "parlay_lab",
         },
         {
             "Workflow": "Bankroll journal",
@@ -2375,6 +2383,8 @@ with tab5:
                 if not journal_df.empty
                 else "Log a manual bet or save a tracked ticket with bankroll tracking to start this journal."
             ),
+            "ActionLabel": "Open Bankroll Journal",
+            "ActionTarget": "bankroll_journal",
         },
     ]
 
@@ -2417,6 +2427,10 @@ with tab5:
             """,
             unsafe_allow_html=True,
         )
+        if row.get("ActionLabel"):
+            if status_cols[idx].button(row["ActionLabel"], key=f"results_status_action_{idx}", use_container_width=True):
+                set_dashboard_focus(str(row["ActionTarget"]))
+                st.rerun()
 
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
     metric_col1.metric("Tracked Picks", f"{len(tracked_df)}")
