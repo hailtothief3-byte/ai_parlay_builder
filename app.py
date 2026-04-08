@@ -777,7 +777,14 @@ def render_dfs_autoslip_panel(
             height=180,
             key=f"{key_prefix}_dfs_payload_text",
         )
-        st.code(slip_json, language="json")
+        st.download_button(
+            "Download full payload JSON",
+            data=slip_json,
+            file_name=f"{sport_label.lower()}_{adapter['key']}_dfs_payload.json",
+            mime="application/json",
+            use_container_width=True,
+            key=f"{key_prefix}_dfs_payload_download_inline",
+        )
 
     with st.expander("Supported DFS adapters", expanded=False):
         adapter_df = pd.DataFrame(adapters)[["label", "handoff_mode", "supports_public_prefill", "supports_web_entry", "submission_mode", "notes"]]
@@ -826,6 +833,7 @@ def promote_saved_ticket_to_parlay_lab(ticket_id: int, ticket_name: str, ticket_
     st.session_state["parlay_saved_ticket_id"] = int(ticket_id)
     st.session_state["parlay_saved_ticket_name"] = str(ticket_name)
     st.session_state["parlay_saved_ticket_target"] = str(ticket_row.get("dfs_target_app") or "")
+    st.session_state["parlay_saved_ticket_source"] = str(ticket_row.get("source") or "live_edges")
     st.session_state["parlay_saved_ticket_payload"] = legs_df.to_dict(orient="records")
 
 def compact_numeric_table(df: pd.DataFrame) -> pd.DataFrame:
@@ -2493,15 +2501,30 @@ with tab3:
     render_section_header("Parlay Lab", "Build live or demo tickets with clearer stake planning and model context.")
     if st.session_state.get("dashboard_focus_target") == "parlay_lab":
         st.success("Notification focus is set to Parlay Lab. This is the right place to turn strong watchlist alerts into a draft ticket.")
-    if st.session_state.get("parlay_source_session_override") == "saved_ticket":
+    saved_ticket_override_active = st.session_state.get("parlay_source_session_override") == "saved_ticket"
+    saved_ticket_payload = st.session_state.get("parlay_saved_ticket_payload", [])
+    saved_ticket_source = str(st.session_state.get("parlay_saved_ticket_source", "live_edges"))
+    saved_ticket_source_label = "Live edges" if saved_ticket_source == "live_edges" else "Demo predictions"
+    if saved_ticket_override_active:
         saved_ticket_name = st.session_state.get("parlay_saved_ticket_name", "Saved ticket")
         saved_ticket_target = st.session_state.get("parlay_saved_ticket_target", "")
-        saved_ticket_payload = st.session_state.get("parlay_saved_ticket_payload", [])
         target_suffix = f" for `{saved_ticket_target}`" if saved_ticket_target else ""
         st.info(
             f"Resumed from saved ticket `{saved_ticket_name}`{target_suffix}. "
             f"{len(saved_ticket_payload)} saved legs are available for rebuild or comparison in this session."
         )
+        st.session_state[parlay_source_session_key] = saved_ticket_source_label
+        if st.button("Clear Saved Ticket Context", key="clear_saved_ticket_context", use_container_width=False):
+            for session_key in [
+                "parlay_source_session_override",
+                "parlay_saved_ticket_id",
+                "parlay_saved_ticket_name",
+                "parlay_saved_ticket_target",
+                "parlay_saved_ticket_source",
+                "parlay_saved_ticket_payload",
+            ]:
+                st.session_state.pop(session_key, None)
+            st.rerun()
     source = st.radio(
         "Parlay Source",
         ["Live edges", "Demo predictions"],
@@ -2597,13 +2620,18 @@ with tab3:
                 candidates = candidates.drop_duplicates(subset=["player"], keep="first")
 
             parlay_df = candidates.head(legs).copy()
+            if saved_ticket_override_active and saved_ticket_source == "live_edges" and saved_ticket_payload:
+                parlay_df = pd.DataFrame(saved_ticket_payload).copy()
             live_ticket_name = st.text_input("Live ticket name", value=f"{sport_label} Live Ticket", key="live_ticket_name")
             live_ticket_notes = st.text_input("Live ticket notes", key="live_ticket_notes")
 
             if parlay_df.empty or len(parlay_df) < legs:
                 render_empty_state("Not enough live legs", "Loosen the confidence threshold, change the candidate pool, or allow multiple picks on the same player.", tone="warning")
             else:
-                st.caption("Live parlay mode only uses markets currently marked `Live` for this provider.")
+                if saved_ticket_override_active and saved_ticket_source == "live_edges" and saved_ticket_payload:
+                    st.caption("Currently rendering the selected saved live ticket inside Parlay Lab.")
+                else:
+                    st.caption("Live parlay mode only uses markets currently marked `Live` for this provider.")
                 live_snapshot_col1, live_snapshot_col2, live_snapshot_col3, live_snapshot_col4 = st.columns(4)
                 live_snapshot_col1.metric("Pool", parlay_candidate_pool)
                 live_snapshot_col2.metric("Legs", str(legs))
@@ -2763,24 +2791,30 @@ with tab3:
         demo_ticket_name = st.text_input("Demo ticket name", value=f"{sport_label} Demo Ticket", key="demo_ticket_name")
         demo_ticket_notes = st.text_input("Demo ticket notes", key="demo_ticket_notes")
 
-        parlay = build_parlay(
-            demo_bundle.predictions,
-            ParlaySettings(
-                legs=legs,
-                min_confidence=min_confidence,
-                allow_same_team=allow_same_team,
-                style=style,
-            ),
-        )
+        if saved_ticket_override_active and saved_ticket_source == "demo_predictions" and saved_ticket_payload:
+            parlay = pd.DataFrame(saved_ticket_payload).copy()
+        else:
+            parlay = build_parlay(
+                demo_bundle.predictions,
+                ParlaySettings(
+                    legs=legs,
+                    min_confidence=min_confidence,
+                    allow_same_team=allow_same_team,
+                    style=style,
+                ),
+            )
 
         total_demo_predictions = len(demo_bundle.predictions)
-        st.info(
-            (
-                f"Building from {total_demo_predictions} demo predictions using the `{style}` profile."
-                if total_demo_predictions
-                else "No demo predictions are available for this sport right now."
+        if saved_ticket_override_active and saved_ticket_source == "demo_predictions" and saved_ticket_payload:
+            st.info(f"Rebuilding from the selected saved demo ticket using `{style}` as the current destination profile.")
+        else:
+            st.info(
+                (
+                    f"Building from {total_demo_predictions} demo predictions using the `{style}` profile."
+                    if total_demo_predictions
+                    else "No demo predictions are available for this sport right now."
+                )
             )
-        )
 
         if parlay.empty:
             render_empty_state("No demo parlay met the filters", "Adjust the demo confidence, leg count, or style to widen the candidate pool.", tone="warning")
