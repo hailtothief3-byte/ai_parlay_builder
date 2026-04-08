@@ -411,14 +411,28 @@ def build_watchlist_alert_reason(row: pd.Series, threshold_edge_pct: float, thre
 def render_watchlist_alert_card(row: pd.Series) -> None:
     line_label = str(row.get("line_move_label") or "neutral")
     price_label = str(row.get("price_move_label") or "neutral")
-    line_color_map = {
-        "better": ("#065f46", "#d1fae5"),
-        "worse": ("#991b1b", "#fee2e2"),
-        "neutral": ("#374151", "#e5e7eb"),
-    }
+    line_color_map = (
+        {
+            "better": ("#8ee3b7", "#0f2b1f"),
+            "worse": ("#ff9d9d", "#33161a"),
+            "neutral": ("#dbe4f0", "#1f2937"),
+        }
+        if theme_mode == "Dark"
+        else {
+            "better": ("#065f46", "#d1fae5"),
+            "worse": ("#991b1b", "#fee2e2"),
+            "neutral": ("#374151", "#e5e7eb"),
+        }
+    )
     price_color_map = line_color_map
-    line_text_color, line_bg = line_color_map.get(line_label, ("#374151", "#e5e7eb"))
-    price_text_color, price_bg = price_color_map.get(price_label, ("#374151", "#e5e7eb"))
+    line_text_color, line_bg = line_color_map.get(
+        line_label,
+        ("#dbe4f0", "#1f2937") if theme_mode == "Dark" else ("#374151", "#e5e7eb"),
+    )
+    price_text_color, price_bg = price_color_map.get(
+        price_label,
+        ("#dbe4f0", "#1f2937") if theme_mode == "Dark" else ("#374151", "#e5e7eb"),
+    )
     edge_pct = float(row.get("edge", 0.0) or 0.0) * 100
     confidence = float(row.get("confidence", 0.0) or 0.0)
     recommended_units = float(row.get("recommended_units", 0.0) or 0.0)
@@ -941,6 +955,10 @@ theme_tokens = {
         "app_bg": "radial-gradient(circle at top left, rgba(244, 162, 97, 0.14), transparent 28%), radial-gradient(circle at top right, rgba(42, 157, 143, 0.12), transparent 26%), linear-gradient(180deg, #f6f4ee 0%, #fcfbf8 100%)",
         "hero_bg": "linear-gradient(135deg, rgba(24, 35, 52, 0.94), rgba(34, 63, 95, 0.92))",
         "hero_border": "rgba(255,255,255,0.08)",
+        "hero_brand_bg": "rgba(255,255,255,0.08)",
+        "hero_brand_border": "rgba(255,255,255,0.12)",
+        "hero_pill_bg": "rgba(255,255,255,0.08)",
+        "hero_pill_border": "rgba(255,255,255,0.09)",
         "hero_text": "#f8fafc",
         "hero_subtitle": "rgba(248, 250, 252, 0.84)",
         "eyebrow": "#f4a261",
@@ -963,6 +981,10 @@ theme_tokens = {
         "app_bg": "radial-gradient(circle at top left, rgba(244, 162, 97, 0.10), transparent 24%), radial-gradient(circle at top right, rgba(42, 157, 143, 0.10), transparent 24%), linear-gradient(180deg, #0f1722 0%, #111827 100%)",
         "hero_bg": "linear-gradient(135deg, rgba(11, 18, 32, 0.96), rgba(23, 43, 68, 0.95))",
         "hero_border": "rgba(148,163,184,0.18)",
+        "hero_brand_bg": "rgba(15,23,34,0.68)",
+        "hero_brand_border": "rgba(148,163,184,0.24)",
+        "hero_pill_bg": "rgba(15,23,34,0.58)",
+        "hero_pill_border": "rgba(148,163,184,0.22)",
         "hero_text": "#e5eef8",
         "hero_subtitle": "rgba(226, 232, 240, 0.82)",
         "eyebrow": "#f4a261",
@@ -1019,8 +1041,8 @@ base_css = """
     border-radius: 20px;
     flex-shrink: 0;
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
-    border: 1px solid rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.08);
+    border: 1px solid __HERO_BRAND_BORDER__;
+    background: __HERO_BRAND_BG__;
 }
 .app-hero__eyebrow {
     text-transform: uppercase;
@@ -1051,8 +1073,8 @@ base_css = """
     display: inline-block;
     padding: 0.4rem 0.7rem;
     border-radius: 999px;
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.09);
+    background: __HERO_PILL_BG__;
+    border: 1px solid __HERO_PILL_BORDER__;
     font-size: 0.84rem;
 }
 .section-header {
@@ -1166,8 +1188,12 @@ base_css = """
 theme_css = (
     base_css.replace("__APP_BG__", theme["app_bg"])
     .replace("__HERO_BG__", theme["hero_bg"])
+    .replace("__HERO_BRAND_BG__", theme["hero_brand_bg"])
+    .replace("__HERO_BRAND_BORDER__", theme["hero_brand_border"])
     .replace("__HERO_TEXT__", theme["hero_text"])
     .replace("__HERO_BORDER__", theme["hero_border"])
+    .replace("__HERO_PILL_BG__", theme["hero_pill_bg"])
+    .replace("__HERO_PILL_BORDER__", theme["hero_pill_border"])
     .replace("__EYEBROW__", theme["eyebrow"])
     .replace("__HERO_SUBTITLE__", theme["hero_subtitle"])
     .replace("__SECTION_TITLE__", theme["section_title"])
