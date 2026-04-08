@@ -2096,6 +2096,8 @@ with tab3:
                 )
                 parlay_df.insert(0, "leg_rank", range(1, len(parlay_df) + 1))
                 parlay_display = prefer_player_display(annotate_player_display(parlay_df))
+                if "leg_rank" in parlay_display.columns:
+                    parlay_display["leg_rank"] = parlay_display["leg_rank"].map(lambda value: f"Leg {int(value)}" if pd.notna(value) else "")
                 if "market" in parlay_display.columns:
                     parlay_display["market"] = parlay_display["market"].map(prettify_market_label)
                 parlay_display["bet"] = parlay_display.apply(format_bet_label, axis=1)
@@ -2231,6 +2233,8 @@ with tab3:
             demo_snapshot_col3.metric("Min confidence", f"{min_confidence}")
             demo_snapshot_col4.metric("Same team", "Allowed" if allow_same_team else "Blocked")
             demo_parlay_display = prefer_player_display(annotate_player_display(parlay))
+            if "leg_rank" in demo_parlay_display.columns:
+                demo_parlay_display["leg_rank"] = demo_parlay_display["leg_rank"].map(lambda value: f"Leg {int(value)}" if pd.notna(value) else "")
             if "market" in demo_parlay_display.columns:
                 demo_parlay_display["market"] = demo_parlay_display["market"].map(prettify_market_label)
             demo_parlay_display["bet"] = demo_parlay_display.apply(format_bet_label, axis=1)
