@@ -2072,6 +2072,11 @@ with tab3:
                 render_empty_state("Not enough live legs", "Loosen the confidence threshold, change the candidate pool, or allow multiple picks on the same player.", tone="warning")
             else:
                 st.caption("Live parlay mode only uses markets currently marked `Live` for this provider.")
+                live_snapshot_col1, live_snapshot_col2, live_snapshot_col3, live_snapshot_col4 = st.columns(4)
+                live_snapshot_col1.metric("Pool", parlay_candidate_pool)
+                live_snapshot_col2.metric("Legs", str(legs))
+                live_snapshot_col3.metric("Min confidence", f"{min_confidence}")
+                live_snapshot_col4.metric("Same player", "Allowed" if allow_same_player else "Blocked")
                 parlay_stake_plan = recommend_parlay_stake(
                     parlay_df,
                     bankroll=bankroll_amount,
@@ -2220,6 +2225,11 @@ with tab3:
         if parlay.empty:
             render_empty_state("No demo parlay met the filters", "Adjust the demo confidence, leg count, or style to widen the candidate pool.", tone="warning")
         else:
+            demo_snapshot_col1, demo_snapshot_col2, demo_snapshot_col3, demo_snapshot_col4 = st.columns(4)
+            demo_snapshot_col1.metric("Profile", style)
+            demo_snapshot_col2.metric("Legs", str(legs))
+            demo_snapshot_col3.metric("Min confidence", f"{min_confidence}")
+            demo_snapshot_col4.metric("Same team", "Allowed" if allow_same_team else "Blocked")
             demo_parlay_display = prefer_player_display(annotate_player_display(parlay))
             if "market" in demo_parlay_display.columns:
                 demo_parlay_display["market"] = demo_parlay_display["market"].map(prettify_market_label)
