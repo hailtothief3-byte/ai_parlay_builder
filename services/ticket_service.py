@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from io import BytesIO
+import json
 
 import pandas as pd
 from sqlalchemy import select
@@ -11,6 +12,32 @@ from db.session import SessionLocal
 from services.results_service import get_prop_results
 from sports_config import get_sport_config
 
+TICKET_META_PREFIX = "[APB_META]"
+
+
+def _pack_ticket_notes(notes: str | None = None, metadata: dict | None = None) -> str | None:
+    clean_notes = str(notes or "").strip()
+    if not metadata:
+        return clean_notes or None
+    payload = {
+        "notes": clean_notes,
+        "metadata": metadata,
+    }
+    return TICKET_META_PREFIX + json.dumps(payload)
+
+
+def unpack_ticket_notes(raw_notes: str | None) -> tuple[str | None, dict]:
+    if not raw_notes:
+        return None, {}
+    raw_text = str(raw_notes)
+    if not raw_text.startswith(TICKET_META_PREFIX):
+        return raw_text, {}
+    try:
+        payload = json.loads(raw_text[len(TICKET_META_PREFIX):])
+        return str(payload.get("notes") or "").strip() or None, dict(payload.get("metadata") or {})
+    except Exception:
+        return raw_text, {}
+
 
 def save_ticket(
     ticket_name: str,
@@ -18,6 +45,7 @@ def save_ticket(
     source: str,
     legs_df: pd.DataFrame,
     notes: str | None = None,
+    metadata: dict | None = None,
 ) -> int | None:
     if legs_df.empty:
         return None
@@ -38,7 +66,7 @@ def save_ticket(
             avg_confidence=avg_confidence,
             avg_model_prob=avg_model_prob,
             status="open",
-            notes=notes,
+            notes=_pack_ticket_notes(notes, metadata),
             created_at=created_at,
         )
         db.add(ticket)
@@ -85,16 +113,25 @@ def get_saved_tickets(sport_label: str | None = None) -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
-                "ticket_id": row.id,
-                "name": row.name,
-                "sport_label": row.sport_label,
-                "source": row.source,
-                "leg_count": row.leg_count,
-                "avg_confidence": row.avg_confidence,
-                "avg_model_prob": row.avg_model_prob,
-                "status": row.status,
-                "notes": row.notes,
-                "created_at": row.created_at,
+                **{
+                    "ticket_id": row.id,
+                    "name": row.name,
+                    "sport_label": row.sport_label,
+                    "source": row.source,
+                    "leg_count": row.leg_count,
+                    "avg_confidence": row.avg_confidence,
+                    "avg_model_prob": row.avg_model_prob,
+                    "status": row.status,
+                    "notes": unpack_ticket_notes(row.notes)[0],
+                    "ticket_metadata": unpack_ticket_notes(row.notes)[1],
+                    "created_at": row.created_at,
+                },
+                **(
+                    {
+                        "dfs_target_app": str(unpack_ticket_notes(row.notes)[1].get("dfs_target_label") or ""),
+                        "dfs_target_key": str(unpack_ticket_notes(row.notes)[1].get("dfs_target_key") or ""),
+                    }
+                ),
             }
             for row in rows
         ]

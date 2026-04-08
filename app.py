@@ -675,7 +675,7 @@ def render_dfs_autoslip_panel(
     key_prefix: str,
 ) -> None:
     if card_df.empty:
-        return
+        return None
 
     adapters = get_dfs_slip_adapters()
     adapter_options = {adapter["label"]: adapter for adapter in adapters}
@@ -791,6 +791,32 @@ def render_dfs_autoslip_panel(
             }
         )
         st.dataframe(adapter_df, use_container_width=True, hide_index=True)
+    return adapter
+
+
+def ticket_looks_like_dfs(ticket_row: pd.Series | None, legs_df: pd.DataFrame) -> bool:
+    if ticket_row is not None and str(ticket_row.get("dfs_target_key") or "").strip():
+        return True
+    if legs_df.empty:
+        return False
+    adapters = get_dfs_slip_adapters()
+    adapter_tokens: set[str] = set()
+    for adapter in adapters:
+        adapter_tokens.update(
+            {
+                str(adapter["key"]).lower(),
+                str(adapter["label"]).lower(),
+                str(adapter["label"]).lower().replace(" fantasy", ""),
+            }
+        )
+    for column in ["sportsbook", "book_key"]:
+        if column not in legs_df.columns:
+            continue
+        for value in legs_df[column].dropna().tolist():
+            lowered = str(value).strip().lower()
+            if lowered and any(token in lowered for token in adapter_tokens):
+                return True
+    return False
 
 def compact_numeric_table(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -2468,6 +2494,7 @@ with tab3:
     persist_preference_if_changed(sport_label, "parlay_source", source, "Live edges")
 
     if source == "Live edges":
+        selected_live_dfs_adapter = None
         edge_df = pd.DataFrame()
 
         if live_sport_keys:
@@ -2641,7 +2668,7 @@ with tab3:
                     use_container_width=True,
                 )
                 if is_dfs:
-                    render_dfs_autoslip_panel(
+                    selected_live_dfs_adapter = render_dfs_autoslip_panel(
                         card_df=parlay_df,
                         sport_label=sport_label,
                         source_label="Live DFS edges",
@@ -2655,6 +2682,15 @@ with tab3:
                         source="live_edges",
                         legs_df=parlay_df,
                         notes=live_ticket_notes or None,
+                        metadata=(
+                            {
+                                "dfs_target_key": selected_live_dfs_adapter["key"],
+                                "dfs_target_label": selected_live_dfs_adapter["label"],
+                                "dfs_target_url": selected_live_dfs_adapter["launch_url"],
+                            }
+                            if is_dfs and selected_live_dfs_adapter
+                            else None
+                        ),
                     )
                     if ticket_id:
                         st.success(f"Saved live ticket #{ticket_id}.")
@@ -2673,6 +2709,7 @@ with tab3:
                             st.info(f"Logged bankroll journal entry #{journal_id}.")
                         st.session_state["parlay_live_use_watchlist_alerts"] = False
     else:
+        selected_demo_dfs_adapter = None
         st.caption("Demo mode uses the built-in synthetic prediction engine so you can iterate without live synced data.")
         demo_service = ResearchService()
         demo_bundle = demo_service.build_predictions(sport=sport_config["demo_key"])
@@ -2800,7 +2837,7 @@ with tab3:
                 demo_parlay_display["model_prob"] = (pd.to_numeric(demo_parlay_display["model_prob"], errors="coerce") * 100).round(2)
             st.dataframe(compact_numeric_table(prettify_table_headers(demo_parlay_display)), use_container_width=True)
             if is_dfs:
-                render_dfs_autoslip_panel(
+                selected_demo_dfs_adapter = render_dfs_autoslip_panel(
                     card_df=parlay,
                     sport_label=sport_label,
                     source_label="Demo DFS predictions",
@@ -2814,6 +2851,15 @@ with tab3:
                     source="demo_predictions",
                     legs_df=parlay,
                     notes=demo_ticket_notes or None,
+                    metadata=(
+                        {
+                            "dfs_target_key": selected_demo_dfs_adapter["key"],
+                            "dfs_target_label": selected_demo_dfs_adapter["label"],
+                            "dfs_target_url": selected_demo_dfs_adapter["launch_url"],
+                        }
+                        if is_dfs and selected_demo_dfs_adapter
+                        else None
+                    ),
                 )
                 if ticket_id:
                     st.success(f"Saved demo ticket #{ticket_id}.")
@@ -3405,6 +3451,7 @@ with tab5:
                 "ticket_id",
                 "name",
                 "source",
+                "dfs_target_app",
                 "leg_count",
                 "avg_confidence",
                 "avg_model_prob",
@@ -3461,6 +3508,8 @@ with tab5:
             snapshot_col6.metric("Avg model %", f"{float(ticket_row['avg_model_prob']) * 100:.2f}%" if pd.notna(ticket_row["avg_model_prob"]) else "N/A")
             snapshot_col7.metric("Resolved legs", str(ticket_row["resolved_legs"]))
             snapshot_col8.metric("Open legs", str(ticket_row["open_legs"]))
+            if str(ticket_row.get("dfs_target_app") or "").strip():
+                st.caption(f"Saved DFS destination: {ticket_row['dfs_target_app']}")
 
         if not selected_legs.empty:
             saved_ticket_display = prefer_player_display(annotate_player_display(selected_legs.copy()))
@@ -3502,6 +3551,16 @@ with tab5:
                 )
             else:
                 st.dataframe(compact_numeric_table(saved_ticket_display), use_container_width=True)
+
+            if ticket_looks_like_dfs(ticket_row, selected_legs):
+                st.markdown("#### Rebuild For Another DFS App")
+                render_dfs_autoslip_panel(
+                    card_df=selected_legs,
+                    sport_label=sport_label,
+                    source_label=f"Saved ticket #{int(selected_ticket_id)}",
+                    style_label=str(ticket_row.get("dfs_target_app") or ticket_row.get("source") or "Saved ticket"),
+                    key_prefix=f"saved_ticket_{int(selected_ticket_id)}_dfs_autoslip",
+                )
 
             if not selected_ticket_meta.empty:
                 st.markdown("#### Ticket vs Model Comparison")
