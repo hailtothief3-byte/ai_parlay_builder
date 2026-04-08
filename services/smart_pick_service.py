@@ -117,6 +117,37 @@ def build_smart_pick_profile(graded_df: pd.DataFrame) -> dict[str, object]:
     }
 
 
+def build_smart_learning_tables(graded_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    profile = build_smart_pick_profile(graded_df)
+
+    market_summary = profile["market_summary"].copy()
+    sportsbook_summary = profile["sportsbook_summary"].copy()
+    confidence_summary = profile["confidence_summary"].copy()
+
+    if not market_summary.empty:
+        market_summary = market_summary.sort_values(
+            ["market_roi_per_pick", "market_hit_rate", "market_picks"],
+            ascending=[False, False, False],
+        )
+    if not sportsbook_summary.empty:
+        sportsbook_summary = sportsbook_summary.sort_values(
+            ["sportsbook_roi_per_pick", "sportsbook_hit_rate", "sportsbook_picks"],
+            ascending=[False, False, False],
+        )
+    if not confidence_summary.empty:
+        confidence_summary = confidence_summary.sort_values(
+            ["confidence_bucket_hit_rate", "confidence_bucket_roi_per_pick", "confidence_bucket_picks"],
+            ascending=[False, False, False],
+        )
+
+    return {
+        "summary": pd.DataFrame([profile["summary"]]),
+        "market_summary": market_summary,
+        "sportsbook_summary": sportsbook_summary,
+        "confidence_summary": confidence_summary,
+    }
+
+
 def _build_reason_text(row: pd.Series) -> str:
     parts: list[str] = []
     model_prob = row.get("model_prob")

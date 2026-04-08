@@ -40,7 +40,7 @@ from services.results_service import (
 )
 from services.research import ResearchService
 from services.settings_manager import reload_runtime_modules, upsert_env_values
-from services.smart_pick_service import score_smart_picks
+from services.smart_pick_service import build_smart_learning_tables, score_smart_picks
 from services.stats_service import (
     build_stats_template,
     get_latest_stats_snapshots,
@@ -1221,6 +1221,19 @@ def render_smart_pick_section(
         st.info("Smart scoring is currently leaning on live model edge and confidence. Track and grade more picks to unlock stronger historical weighting.")
     elif history_picks < 12:
         st.info("Smart scoring is live, but the history sample is still small. As more graded picks accumulate, market and sportsbook memory will become more reliable.")
+
+
+def build_smart_learning_display(df: pd.DataFrame, rename_map: dict[str, str], percent_columns: list[str], value_columns: list[str]) -> pd.DataFrame:
+    if df.empty:
+        return df
+    display = df.copy()
+    for column in percent_columns:
+        if column in display.columns:
+            display[column] = (pd.to_numeric(display[column], errors="coerce") * 100).round(1)
+    for column in value_columns:
+        if column in display.columns:
+            display[column] = pd.to_numeric(display[column], errors="coerce").round(2)
+    return compact_numeric_table(display.rename(columns=rename_map))
 
 
 def build_watchlist_option_labels(df: pd.DataFrame) -> dict[str, int]:
@@ -2705,6 +2718,11 @@ with tab2:
             rows_to_track = display_edges.head(track_count).copy()
             tracked = track_edge_rows(rows_to_track, sport_key=live_sport_keys[0], source="edge_scanner")
             st.success(f"Saved {tracked} live edge rows to the grading tracker.")
+        smart_track_count = st.slider("Track top smart-ranked edges", min_value=1, max_value=25, value=5, key="track_top_smart_edges")
+        if st.button("Save Top Smart Picks For Grading", use_container_width=True):
+            smart_rows_to_track = display_edges.sort_values(["smart_score", "smart_expected_win_rate", "edge"], ascending=False).head(smart_track_count).copy()
+            tracked = track_edge_rows(smart_rows_to_track, sport_key=live_sport_keys[0], source="smart_pick_engine")
+            st.success(f"Saved {tracked} smart-ranked picks to the grading tracker.")
         edge_watchlist_options = build_watchlist_option_labels(display_edges.head(30))
         selected_edge_watchlist = st.multiselect(
             "Add edge rows to watchlist",
@@ -3251,6 +3269,7 @@ with tab5:
     tracked_df = get_tracked_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
     unresolved_tracked_df = get_unresolved_tracked_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
     graded_df = get_graded_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
+    smart_learning_tables = build_smart_learning_tables(graded_df)
     results_df = get_prop_results(live_sport_keys) if live_sport_keys else pd.DataFrame()
     auto_settle_scope = ",".join(live_sport_keys) if live_sport_keys else ""
     auto_settle_payload = get_sync_payload("sportsgameodds_auto_settle", auto_settle_scope) if auto_settle_scope else {}
@@ -3359,6 +3378,84 @@ with tab5:
     metric_col2.metric("Settled Results", f"{len(results_df)}")
     metric_col3.metric("Graded Picks", f"{len(graded_df)}")
     metric_col4.metric("Open Tracked Picks", f"{len(unresolved_tracked_df)}")
+
+    st.markdown("### Smart Pick Learning")
+    if graded_df.empty:
+        render_empty_state(
+            "No smart-pick history yet",
+            "Track and grade more picks so the smart engine can build reliable memory by market, sportsbook, and confidence band.",
+            tone="info",
+        )
+    else:
+        smart_summary_row = smart_learning_tables["summary"].iloc[0].to_dict() if not smart_learning_tables["summary"].empty else {}
+        smart_metric_col1, smart_metric_col2, smart_metric_col3 = st.columns(3)
+        smart_metric_col1.metric("History picks", f"{int(smart_summary_row.get('history_picks', 0) or 0)}")
+        smart_metric_col2.metric("Historical hit rate", f"{float(smart_summary_row.get('overall_hit_rate', 0.0) or 0.0) * 100:.1f}%")
+        smart_metric_col3.metric("Units per pick", f"{float(smart_summary_row.get('overall_roi_per_pick', 0.0) or 0.0):+.2f}")
+
+        smart_tab1, smart_tab2, smart_tab3 = st.tabs(["Best Markets", "Best Sportsbooks", "Confidence Memory"])
+
+        with smart_tab1:
+            market_learning = smart_learning_tables["market_summary"]
+            if market_learning.empty:
+                st.caption("No market-specific history yet.")
+            else:
+                market_learning_display = build_smart_learning_display(
+                    market_learning.head(12),
+                    rename_map={
+                        "market": "Market",
+                        "market_picks": "Tracked Picks",
+                        "market_hit_rate": "Hit Rate %",
+                        "market_roi_per_pick": "Units Per Pick",
+                        "market_avg_model_prob": "Avg Model %",
+                        "market_avg_confidence": "Avg Confidence",
+                    },
+                    percent_columns=["market_hit_rate", "market_avg_model_prob"],
+                    value_columns=["market_roi_per_pick", "market_avg_confidence"],
+                )
+                if "Market" in market_learning_display.columns:
+                    market_learning_display["Market"] = market_learning_display["Market"].map(prettify_market_label)
+                st.dataframe(market_learning_display, use_container_width=True, hide_index=True)
+
+        with smart_tab2:
+            sportsbook_learning = smart_learning_tables["sportsbook_summary"]
+            if sportsbook_learning.empty:
+                st.caption("No sportsbook-specific history yet.")
+            else:
+                sportsbook_learning_display = build_smart_learning_display(
+                    sportsbook_learning.head(12),
+                    rename_map={
+                        "sportsbook": "Sportsbook",
+                        "sportsbook_picks": "Tracked Picks",
+                        "sportsbook_hit_rate": "Hit Rate %",
+                        "sportsbook_roi_per_pick": "Units Per Pick",
+                        "sportsbook_avg_model_prob": "Avg Model %",
+                        "sportsbook_avg_confidence": "Avg Confidence",
+                    },
+                    percent_columns=["sportsbook_hit_rate", "sportsbook_avg_model_prob"],
+                    value_columns=["sportsbook_roi_per_pick", "sportsbook_avg_confidence"],
+                )
+                st.dataframe(sportsbook_learning_display, use_container_width=True, hide_index=True)
+
+        with smart_tab3:
+            confidence_learning = smart_learning_tables["confidence_summary"]
+            if confidence_learning.empty:
+                st.caption("No confidence-band history yet.")
+            else:
+                confidence_learning_display = build_smart_learning_display(
+                    confidence_learning.head(12),
+                    rename_map={
+                        "confidence_bucket": "Confidence Band",
+                        "confidence_bucket_picks": "Tracked Picks",
+                        "confidence_bucket_hit_rate": "Hit Rate %",
+                        "confidence_bucket_roi_per_pick": "Units Per Pick",
+                        "confidence_bucket_avg_model_prob": "Avg Model %",
+                        "confidence_bucket_avg_confidence": "Avg Confidence",
+                    },
+                    percent_columns=["confidence_bucket_hit_rate", "confidence_bucket_avg_model_prob"],
+                    value_columns=["confidence_bucket_roi_per_pick", "confidence_bucket_avg_confidence"],
+                )
+                st.dataframe(confidence_learning_display, use_container_width=True, hide_index=True)
 
     if auto_settle_payload:
         recorded_at = str(auto_settle_payload.get("recorded_at") or "")
