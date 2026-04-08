@@ -914,183 +914,203 @@ st.set_page_config(
     page_icon=str(BRANDMARK_PATH) if BRANDMARK_PATH.exists() else None,
     layout="wide",
 )
-st.markdown(
-    f"""
-    <style>
-    .stApp {
-        background: {theme["app_bg"]};
-    }
-    .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 3rem;
-        max-width: 1400px;
-    }
-    .app-hero {
-        padding: 1.5rem 1.6rem;
-        border-radius: 24px;
-        background: {theme["hero_bg"]};
-        color: {theme["hero_text"]};
-        border: 1px solid {theme["hero_border"]};
-        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
-        margin-bottom: 1rem;
-    }
-    .app-hero__brand {
-        display: flex;
-        align-items: flex-start;
-        gap: 1rem;
-    }
-    .app-hero__brandmark {
-        width: 68px;
-        height: 68px;
-        border-radius: 20px;
-        flex-shrink: 0;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
-        border: 1px solid rgba(255,255,255,0.12);
-        background: rgba(255,255,255,0.08);
-    }
-    .app-hero__eyebrow {
-        text-transform: uppercase;
-        letter-spacing: 0.16em;
-        font-size: 0.72rem;
-        color: {theme["eyebrow"]};
-        margin-bottom: 0.45rem;
-        font-weight: 700;
-    }
-    .app-hero__title {
-        font-size: 2rem;
-        line-height: 1.05;
-        font-weight: 800;
-        margin-bottom: 0.45rem;
-    }
-    .app-hero__subtitle {
-        font-size: 1rem;
-        max-width: 760px;
-        color: {theme["hero_subtitle"]};
-        margin-bottom: 1rem;
-    }
-    .app-hero__meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.55rem;
-    }
-    .hero-pill {
-        display: inline-block;
-        padding: 0.4rem 0.7rem;
-        border-radius: 999px;
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.09);
-        font-size: 0.84rem;
-    }
-    .section-header {
-        margin: 0.1rem 0 0.9rem;
-    }
-    .section-header__title {
-        font-size: 1.35rem;
-        font-weight: 800;
-        color: {theme["section_title"]};
-        margin-bottom: 0.15rem;
-    }
-    .section-header__subtitle {
-        font-size: 0.95rem;
-        color: {theme["section_subtitle"]};
-    }
-    .watchlist-alert-card {
-        background: {theme["card_bg"]};
-        border: 1px solid {theme["card_border"]};
-        border-radius: 18px;
-        padding: 0.95rem 1rem;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
-        margin-bottom: 0.75rem;
-    }
-    .watchlist-alert-card__title {
-        font-size: 0.98rem;
-        font-weight: 800;
-        color: {theme["section_title"]};
-        margin-bottom: 0.18rem;
-    }
-    .watchlist-alert-card__subtitle {
-        font-size: 0.86rem;
-        color: {theme["section_subtitle"]};
-        margin-bottom: 0.7rem;
-    }
-    .watchlist-alert-card__metrics {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.55rem;
-        margin-bottom: 0.7rem;
-    }
-    .watchlist-alert-card__metrics span {
-        display: block;
-        font-size: 0.72rem;
-        color: {theme["section_subtitle"]};
-        text-transform: uppercase;
-        margin-bottom: 0.1rem;
-    }
-    .watchlist-alert-card__metrics strong {
-        font-size: 0.98rem;
-        color: {theme["section_title"]};
-    }
-    .watchlist-alert-card__signals {
-        display: flex;
-        gap: 0.45rem;
-        flex-wrap: wrap;
-    }
-    .watchlist-alert-card__signals span {
-        display: inline-block;
-        padding: 0.28rem 0.55rem;
-        border-radius: 999px;
-        font-size: 0.78rem;
-        font-weight: 700;
-    }
-    .watchlist-alert-card__freshness {
-        margin-top: 0.65rem;
-        font-size: 0.8rem;
-        color: {theme["section_subtitle"]};
-    }
-    [data-testid="stMetric"] {
-        background: {theme["metric_bg"]};
-        border: 1px solid {theme["metric_border"]};
-        padding: 0.9rem 1rem;
-        border-radius: 18px;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
-    }
-    [data-testid="stDataFrame"] {
-        background: {theme["table_bg"]};
-        border-radius: 18px;
-        padding: 0.15rem;
-        border: 1px solid {theme["table_border"]};
-    }
-    [data-testid="stDataFrame"] div[role="grid"] {
-        font-size: 0.92rem;
-    }
-    [data-testid="stDataFrame"] [role="columnheader"] {
-        letter-spacing: 0.03em;
-        font-weight: 700;
-    }
-    [data-testid="stSidebar"] {
-        background: {theme["sidebar_bg"]};
-        border-right: 1px solid {theme["sidebar_border"]};
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0.35rem;
-        background: {theme["tabs_bg"]};
-        padding: 0.45rem;
-        border-radius: 18px;
-        border: 1px solid {theme["tabs_border"]};
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 14px;
-        padding: 0.45rem 0.9rem;
-        font-weight: 700;
-    }
-    .stTabs [aria-selected="true"] {
-        background: {theme["tab_active_bg"]};
-        color: {theme["tab_active_text"]};
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
+base_css = """
+<style>
+.stApp {
+    background: __APP_BG__;
+}
+.block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
+    max-width: 1400px;
+}
+.app-hero {
+    padding: 1.5rem 1.6rem;
+    border-radius: 24px;
+    background: __HERO_BG__;
+    color: __HERO_TEXT__;
+    border: 1px solid __HERO_BORDER__;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+    margin-bottom: 1rem;
+}
+.app-hero__brand {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+.app-hero__brandmark {
+    width: 68px;
+    height: 68px;
+    border-radius: 20px;
+    flex-shrink: 0;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.08);
+}
+.app-hero__eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 0.72rem;
+    color: __EYEBROW__;
+    margin-bottom: 0.45rem;
+    font-weight: 700;
+}
+.app-hero__title {
+    font-size: 2rem;
+    line-height: 1.05;
+    font-weight: 800;
+    margin-bottom: 0.45rem;
+}
+.app-hero__subtitle {
+    font-size: 1rem;
+    max-width: 760px;
+    color: __HERO_SUBTITLE__;
+    margin-bottom: 1rem;
+}
+.app-hero__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+.hero-pill {
+    display: inline-block;
+    padding: 0.4rem 0.7rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.09);
+    font-size: 0.84rem;
+}
+.section-header {
+    margin: 0.1rem 0 0.9rem;
+}
+.section-header__title {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: __SECTION_TITLE__;
+    margin-bottom: 0.15rem;
+}
+.section-header__subtitle {
+    font-size: 0.95rem;
+    color: __SECTION_SUBTITLE__;
+}
+.watchlist-alert-card {
+    background: __CARD_BG__;
+    border: 1px solid __CARD_BORDER__;
+    border-radius: 18px;
+    padding: 0.95rem 1rem;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+    margin-bottom: 0.75rem;
+}
+.watchlist-alert-card__title {
+    font-size: 0.98rem;
+    font-weight: 800;
+    color: __SECTION_TITLE__;
+    margin-bottom: 0.18rem;
+}
+.watchlist-alert-card__subtitle {
+    font-size: 0.86rem;
+    color: __SECTION_SUBTITLE__;
+    margin-bottom: 0.7rem;
+}
+.watchlist-alert-card__metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.55rem;
+    margin-bottom: 0.7rem;
+}
+.watchlist-alert-card__metrics span {
+    display: block;
+    font-size: 0.72rem;
+    color: __SECTION_SUBTITLE__;
+    text-transform: uppercase;
+    margin-bottom: 0.1rem;
+}
+.watchlist-alert-card__metrics strong {
+    font-size: 0.98rem;
+    color: __SECTION_TITLE__;
+}
+.watchlist-alert-card__signals {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+.watchlist-alert-card__signals span {
+    display: inline-block;
+    padding: 0.28rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+.watchlist-alert-card__freshness {
+    margin-top: 0.65rem;
+    font-size: 0.8rem;
+    color: __SECTION_SUBTITLE__;
+}
+[data-testid="stMetric"] {
+    background: __METRIC_BG__;
+    border: 1px solid __METRIC_BORDER__;
+    padding: 0.9rem 1rem;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+[data-testid="stDataFrame"] {
+    background: __TABLE_BG__;
+    border-radius: 18px;
+    padding: 0.15rem;
+    border: 1px solid __TABLE_BORDER__;
+}
+[data-testid="stDataFrame"] div[role="grid"] {
+    font-size: 0.92rem;
+}
+[data-testid="stDataFrame"] [role="columnheader"] {
+    letter-spacing: 0.03em;
+    font-weight: 700;
+}
+[data-testid="stSidebar"] {
+    background: __SIDEBAR_BG__;
+    border-right: 1px solid __SIDEBAR_BORDER__;
+}
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0.35rem;
+    background: __TABS_BG__;
+    padding: 0.45rem;
+    border-radius: 18px;
+    border: 1px solid __TABS_BORDER__;
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: 14px;
+    padding: 0.45rem 0.9rem;
+    font-weight: 700;
+}
+.stTabs [aria-selected="true"] {
+    background: __TAB_ACTIVE_BG__;
+    color: __TAB_ACTIVE_TEXT__;
+}
+</style>
+"""
+theme_css = (
+    base_css.replace("__APP_BG__", theme["app_bg"])
+    .replace("__HERO_BG__", theme["hero_bg"])
+    .replace("__HERO_TEXT__", theme["hero_text"])
+    .replace("__HERO_BORDER__", theme["hero_border"])
+    .replace("__EYEBROW__", theme["eyebrow"])
+    .replace("__HERO_SUBTITLE__", theme["hero_subtitle"])
+    .replace("__SECTION_TITLE__", theme["section_title"])
+    .replace("__SECTION_SUBTITLE__", theme["section_subtitle"])
+    .replace("__CARD_BG__", theme["card_bg"])
+    .replace("__CARD_BORDER__", theme["card_border"])
+    .replace("__METRIC_BG__", theme["metric_bg"])
+    .replace("__METRIC_BORDER__", theme["metric_border"])
+    .replace("__TABLE_BG__", theme["table_bg"])
+    .replace("__TABLE_BORDER__", theme["table_border"])
+    .replace("__SIDEBAR_BG__", theme["sidebar_bg"])
+    .replace("__SIDEBAR_BORDER__", theme["sidebar_border"])
+    .replace("__TABS_BG__", theme["tabs_bg"])
+    .replace("__TABS_BORDER__", theme["tabs_border"])
+    .replace("__TAB_ACTIVE_BG__", theme["tab_active_bg"])
+    .replace("__TAB_ACTIVE_TEXT__", theme["tab_active_text"])
 )
+st.markdown(theme_css, unsafe_allow_html=True)
 
 selector_col1, selector_col2, selector_col3 = st.columns([1.1, 0.95, 0.8])
 sport_labels = get_sport_labels()
