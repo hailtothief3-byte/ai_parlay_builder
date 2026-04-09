@@ -451,7 +451,11 @@ def build_monthly_model_review(graded_df: pd.DataFrame) -> dict[str, object]:
     )
 
 
-def build_model_recommendation_cards(weekly_review: dict[str, object], monthly_review: dict[str, object]) -> list[dict[str, str]]:
+def build_model_recommendation_cards(
+    weekly_review: dict[str, object],
+    monthly_review: dict[str, object],
+    sport_label: str = "",
+) -> list[dict[str, str]]:
     cards: list[dict[str, str]] = []
     weekly_current = dict(weekly_review.get("current_summary") or {})
     monthly_current = dict(monthly_review.get("current_summary") or {})
@@ -467,13 +471,14 @@ def build_model_recommendation_cards(weekly_review: dict[str, object], monthly_r
 
     top_weekly_source = str(weekly_current.get("top_source") or "")
     top_weekly_market = str(weekly_current.get("top_market") or "")
+    sport_prefix = f"{sport_label} " if str(sport_label).strip() else ""
 
     if weekly_units > 0 and weekly_units_per_pick > 0:
         cards.append(
             {
                 "title": "Lean Into What Is Working",
                 "status": "Positive Momentum",
-                "body": f"The last 7 days are profitable at {weekly_units:+.2f} units and {weekly_units_per_pick:+.2f} units per pick. Keep weighting current builds toward the workflow patterns that are already paying off.",
+                "body": f"The last 7 days of {sport_prefix.lower()}results are profitable at {weekly_units:+.2f} units and {weekly_units_per_pick:+.2f} units per pick. Keep weighting current builds toward the workflow patterns that are already paying off.",
             }
         )
     elif weekly_units < 0 or weekly_units_per_pick < 0:
@@ -481,7 +486,7 @@ def build_model_recommendation_cards(weekly_review: dict[str, object], monthly_r
             {
                 "title": "Tighten Current Exposure",
                 "status": "Cooling Off",
-                "body": f"The last 7 days slipped to {weekly_units:+.2f} units and {weekly_units_per_pick:+.2f} units per pick. This is a good stretch to reduce aggressive forcing and lean on the strongest-ranked edges only.",
+                "body": f"The last 7 days of {sport_prefix.lower()}results slipped to {weekly_units:+.2f} units and {weekly_units_per_pick:+.2f} units per pick. This is a good stretch to reduce aggressive forcing and lean on the strongest-ranked edges only.",
             }
         )
 
@@ -520,6 +525,34 @@ def build_model_recommendation_cards(weekly_review: dict[str, object], monthly_r
             }
         )
 
+    weekly_source_breakdown = weekly_review.get("source_breakdown", pd.DataFrame())
+    if isinstance(weekly_source_breakdown, pd.DataFrame) and not weekly_source_breakdown.empty and "source" in weekly_source_breakdown.columns:
+        auto_row = weekly_source_breakdown[weekly_source_breakdown["source"] == "smart_pick_engine_auto"].head(1)
+        manual_row = weekly_source_breakdown[weekly_source_breakdown["source"] == "smart_pick_engine_manual"].head(1)
+        legacy_row = weekly_source_breakdown[weekly_source_breakdown["source"] == "edge_scanner"].head(1)
+        if not auto_row.empty and not legacy_row.empty:
+            auto_units = float(auto_row.iloc[0].get("units_per_pick", 0.0) or 0.0)
+            legacy_units = float(legacy_row.iloc[0].get("units_per_pick", 0.0) or 0.0)
+            if auto_units > legacy_units + 0.08:
+                cards.append(
+                    {
+                        "title": "Auto Smart Is Beating Legacy",
+                        "status": "Source Comparison",
+                        "body": f"Smart Pick Engine (Auto) is ahead of Edge Scanner by {auto_units - legacy_units:+.2f} units per pick in the current weekly window. Keep feeding more volume through auto to verify the edge holds.",
+                    }
+                )
+        if not auto_row.empty and not manual_row.empty:
+            auto_units = float(auto_row.iloc[0].get("units_per_pick", 0.0) or 0.0)
+            manual_units = float(manual_row.iloc[0].get("units_per_pick", 0.0) or 0.0)
+            if manual_units > auto_units + 0.08:
+                cards.append(
+                    {
+                        "title": "Manual Smart Has A Weekly Edge",
+                        "status": "Source Comparison",
+                        "body": f"Smart Pick Engine (Manual) is ahead of auto by {manual_units - auto_units:+.2f} units per pick this week. Keep the manual mix live, but keep watching the monthly trend before locking it in.",
+                    }
+                )
+
     if monthly_units < 0 and not cards:
         cards.append(
             {
@@ -529,24 +562,79 @@ def build_model_recommendation_cards(weekly_review: dict[str, object], monthly_r
             }
         )
 
-    return cards[:4]
+    return cards[:6]
 
 
-def build_coach_mode_summary(weekly_review: dict[str, object], monthly_review: dict[str, object]) -> str:
+def build_coach_mode_summary(weekly_review: dict[str, object], monthly_review: dict[str, object], sport_label: str = "") -> str:
     weekly_current = dict(weekly_review.get("current_summary") or {})
     monthly_current = dict(monthly_review.get("current_summary") or {})
     weekly_units = float(weekly_current.get("profit_units", 0.0) or 0.0)
     monthly_units = float(monthly_current.get("profit_units", 0.0) or 0.0)
     weekly_source = str(weekly_current.get("top_source") or "")
     weekly_market = str(weekly_current.get("top_market") or "")
+    sport_prefix = f"{sport_label} " if str(sport_label).strip() else ""
 
     if int(weekly_current.get("picks", 0) or 0) <= 0:
-        return "Coach Mode: waiting on more settled picks before making a fresh weekly call."
+        return f"Coach Mode: waiting on more settled {sport_prefix.lower()}picks before making a fresh weekly call."
 
     posture = "press the edge" if weekly_units > 0 and monthly_units >= 0 else "stay selective"
     source_text = f"{weekly_source.replace('_', ' ').title()} is leading the current mix" if weekly_source else "no clear workflow leader has emerged yet"
     market_text = f", with {weekly_market.replace('_', ' ').title()} acting as the strongest market pocket" if weekly_market else ""
-    return f"Coach Mode: {source_text}{market_text}, so the current posture is to {posture} while the app keeps tracking weekly versus monthly trend strength."
+    return f"Coach Mode: for {sport_prefix.strip() or 'this board'}, {source_text}{market_text}, so the current posture is to {posture} while the app keeps tracking weekly versus monthly trend strength."
+
+
+def build_review_action_checklist(
+    weekly_review: dict[str, object],
+    monthly_review: dict[str, object],
+) -> list[dict[str, object]]:
+    weekly_current = dict(weekly_review.get("current_summary") or {})
+    monthly_current = dict(monthly_review.get("current_summary") or {})
+    weekly_prior = dict(weekly_review.get("prior_summary") or {})
+
+    weekly_units = float(weekly_current.get("profit_units", 0.0) or 0.0)
+    monthly_units = float(monthly_current.get("profit_units", 0.0) or 0.0)
+    weekly_hit_delta = float(weekly_current.get("hit_rate", 0.0) or 0.0) - float(weekly_prior.get("hit_rate", 0.0) or 0.0)
+    cooling = weekly_units < 0 or monthly_units < 0 or weekly_hit_delta < -0.04
+
+    action_items = [
+        {
+            "label": "Use all live edges as the default candidate pool",
+            "setting_key": "candidate_pool",
+            "value": "All live edges",
+            "reason": "Keep the live build sourcing broad enough for the smart ranker to do its job.",
+        },
+        {
+            "label": "Target 3 live legs",
+            "setting_key": "live_legs",
+            "value": 3 if cooling else 4,
+            "reason": "Shorter tickets stay cleaner when results cool off, while 4-leg builds are reasonable when the board is healthy.",
+        },
+        {
+            "label": "Raise live minimum confidence",
+            "setting_key": "live_min_confidence",
+            "value": 72 if cooling else 66,
+            "reason": "A firmer confidence floor helps reduce forcing during rough stretches.",
+        },
+        {
+            "label": "Block same-player live overlap",
+            "setting_key": "live_same_player",
+            "value": False,
+            "reason": "Cleaner exposure usually makes the smart profile easier to trust.",
+        },
+        {
+            "label": "Use a balanced demo profile",
+            "setting_key": "demo_style",
+            "value": "Balanced" if not cooling else "Safe",
+            "reason": "Balanced keeps demo builds realistic unless the current trend says to get more selective.",
+        },
+        {
+            "label": "Keep same-team demo overlap blocked",
+            "setting_key": "demo_same_team",
+            "value": False,
+            "reason": "This avoids piling too much narrative correlation into the demo card.",
+        },
+    ]
+    return action_items
 
 
 def build_ticket_benchmark_summary(graded_picks_df: pd.DataFrame, leg_count: int) -> dict[str, float | int | None]:

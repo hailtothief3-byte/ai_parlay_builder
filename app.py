@@ -19,7 +19,7 @@ from services.dfs_slip_service import (
     get_dfs_slip_adapters,
     recommend_dfs_slip_adapter,
 )
-from services.analytics import build_calibration_summary, build_clv_backtest, build_coach_mode_summary, build_experiment_snapshot, build_model_recommendation_cards, build_monthly_model_review, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary, build_weekly_model_review
+from services.analytics import build_calibration_summary, build_clv_backtest, build_coach_mode_summary, build_experiment_snapshot, build_model_recommendation_cards, build_monthly_model_review, build_review_action_checklist, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary, build_weekly_model_review
 from services.board_service import get_latest_board
 from services.bankroll_service import annotate_stake_recommendations, recommend_parlay_stake
 from services.bankroll_journal_service import add_journal_entry, build_bankroll_kpis, build_bankroll_summary, get_journal_entries, settle_journal_entry, sync_ticket_journal_entries
@@ -1444,6 +1444,77 @@ def render_recommendation_cards(cards: list[dict[str, str]], title: str) -> None
             "Once enough graded history is available across the recent review windows, the app will turn trend changes into recommendation cards here.",
             tone="info",
         )
+
+
+def apply_review_action_checklist(
+    sport_label: str,
+    checklist: list[dict[str, object]],
+    live_legs_session_key: str,
+    live_min_conf_session_key: str,
+    live_same_player_session_key: str,
+    demo_style_session_key: str,
+    demo_same_team_session_key: str,
+) -> None:
+    setting_to_session = {
+        "candidate_pool": "parlay_live_candidate_pool",
+        "live_legs": live_legs_session_key,
+        "live_min_confidence": live_min_conf_session_key,
+        "live_same_player": live_same_player_session_key,
+        "demo_style": demo_style_session_key,
+        "demo_same_team": demo_same_team_session_key,
+    }
+    setting_to_preference = {
+        "candidate_pool": "parlay_source",
+        "live_legs": "live_legs",
+        "live_min_confidence": "live_min_confidence",
+        "live_same_player": "live_same_player",
+        "demo_style": "demo_parlay_style",
+        "demo_same_team": "demo_same_team",
+    }
+    for item in checklist:
+        setting_key = str(item.get("setting_key") or "")
+        if setting_key not in setting_to_session:
+            continue
+        value = item.get("value")
+        session_key = setting_to_session[setting_key]
+        st.session_state[session_key] = value
+        persist_preference_if_changed(sport_label, setting_to_preference[setting_key], value, value)
+
+
+def render_review_action_checklist(
+    checklist: list[dict[str, object]],
+    sport_label: str,
+    live_legs_session_key: str,
+    live_min_conf_session_key: str,
+    live_same_player_session_key: str,
+    demo_style_session_key: str,
+    demo_same_team_session_key: str,
+) -> None:
+    st.markdown("### Action Checklist")
+    if not checklist:
+        render_empty_state(
+            "No checklist yet",
+            "As review windows fill in, the app will translate current trend posture into settings you can apply straight to Parlay Lab.",
+            tone="info",
+        )
+        return
+    for item in checklist:
+        st.markdown(
+            f"- **{item.get('label', '')}**: set to `{item.get('value')}`. {item.get('reason', '')}"
+        )
+    if st.button("Apply Checklist To Parlay Lab", use_container_width=True):
+        apply_review_action_checklist(
+            sport_label=sport_label,
+            checklist=checklist,
+            live_legs_session_key=live_legs_session_key,
+            live_min_conf_session_key=live_min_conf_session_key,
+            live_same_player_session_key=live_same_player_session_key,
+            demo_style_session_key=demo_style_session_key,
+            demo_same_team_session_key=demo_same_team_session_key,
+        )
+        st.session_state["dashboard_focus_target"] = "parlay_lab"
+        st.success("Applied the current review checklist to Parlay Lab for this sport.")
+        st.rerun()
         return
 
     for card in cards:
@@ -2590,7 +2661,7 @@ with tab0:
     hidden_notification_history = get_notification_history_rows(sport_label)
 
     st.markdown("### Coach Mode")
-    st.info(build_coach_mode_summary(overview_weekly_review, overview_monthly_review))
+    st.info(build_coach_mode_summary(overview_weekly_review, overview_monthly_review, sport_label=sport_label))
 
     if not overview_watchlist_alerts.empty:
         st.markdown("### Top Watchlist Signals")
@@ -4169,8 +4240,18 @@ with tab5:
 
     weekly_review = build_weekly_model_review(graded_df)
     monthly_review = build_monthly_model_review(graded_df)
-    recommendation_cards = build_model_recommendation_cards(weekly_review, monthly_review)
+    recommendation_cards = build_model_recommendation_cards(weekly_review, monthly_review, sport_label=sport_label)
+    review_action_checklist = build_review_action_checklist(weekly_review, monthly_review)
     render_recommendation_cards(recommendation_cards, "Recommendation Cards")
+    render_review_action_checklist(
+        checklist=review_action_checklist,
+        sport_label=sport_label,
+        live_legs_session_key=live_legs_session_key,
+        live_min_conf_session_key=live_min_conf_session_key,
+        live_same_player_session_key=live_same_player_session_key,
+        demo_style_session_key=demo_style_session_key,
+        demo_same_team_session_key=demo_same_team_session_key,
+    )
     render_period_model_review(weekly_review, "Weekly Model Review")
     render_period_model_review(monthly_review, "Monthly Model Review")
     weekly_review_json = json.dumps(
@@ -4178,6 +4259,7 @@ with tab5:
             "generated_at_utc": pd.Timestamp.utcnow().isoformat(),
             "sport_label": sport_label,
             "recommendation_cards": recommendation_cards,
+            "action_checklist": review_action_checklist,
             "weekly_review": {
                 **weekly_review,
                 "source_breakdown": weekly_review.get("source_breakdown", pd.DataFrame()).to_dict(orient="records")
