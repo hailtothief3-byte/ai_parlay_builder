@@ -1559,6 +1559,7 @@ def render_smart_parlay_profile_panel(
     current_values: dict[str, object],
     apply_button_key: str,
     apply_callback,
+    pending_updates_key: str,
 ) -> None:
     st.markdown(f"### {title}")
     sample_size = int(profile.get("sample_size", 0) or 0)
@@ -1586,9 +1587,17 @@ def render_smart_parlay_profile_panel(
         st.caption(f"{mode_label} profile is informed by {sample_size} historical tickets.")
 
     if st.button("Apply Smart Profile", key=apply_button_key, use_container_width=False):
-        apply_callback(profile)
-        st.success(f"Applied the current smart {mode_label.lower()} profile.")
+        pending_updates = apply_callback(profile) or {}
+        st.session_state[pending_updates_key] = pending_updates
         st.rerun()
+
+
+def apply_pending_profile_updates(pending_updates_key: str) -> None:
+    pending_updates = st.session_state.pop(pending_updates_key, None)
+    if not isinstance(pending_updates, dict) or not pending_updates:
+        return
+    for session_key, value in pending_updates.items():
+        st.session_state[session_key] = value
 
 
 def get_manual_smart_weight_overrides() -> dict[str, float] | None:
@@ -2225,6 +2234,10 @@ demo_legs_session_key = f"demo_legs_{sport_label}"
 demo_min_conf_session_key = f"demo_min_conf_{sport_label}"
 demo_style_session_key = f"demo_style_{sport_label}"
 demo_same_team_session_key = f"demo_same_team_{sport_label}"
+live_profile_pending_updates_key = f"live_profile_pending_updates_{sport_label}"
+demo_profile_pending_updates_key = f"demo_profile_pending_updates_{sport_label}"
+apply_pending_profile_updates(live_profile_pending_updates_key)
+apply_pending_profile_updates(demo_profile_pending_updates_key)
 sync_view_preference_state(sport_label, board_view_session_key, "board_view_mode", "Compact")
 sync_view_preference_state(sport_label, edge_view_session_key, "edge_view_mode", "Compact")
 sync_view_preference_state(sport_label, parlay_view_session_key, "parlay_view_mode", "Compact")
@@ -3277,18 +3290,19 @@ with tab3:
                 profile=smart_parlay_profiles["live"],
                 title="Smart Live Parlay Profile",
                 mode_label="Live",
-                current_values={
-                    "legs": legs,
-                    "min_confidence": min_confidence,
-                    "allow_overlap": allow_same_player,
-                },
-                apply_button_key=f"apply_live_smart_profile_{sport_label}",
-                apply_callback=lambda profile: (
-                    st.session_state.__setitem__(live_legs_session_key, int(profile.get("recommended_legs", legs))),
-                    st.session_state.__setitem__(live_min_conf_session_key, int(profile.get("recommended_min_confidence", min_confidence))),
-                    st.session_state.__setitem__(live_same_player_session_key, bool(profile.get("recommended_same_player", allow_same_player))),
-                ),
-            )
+            current_values={
+                "legs": legs,
+                "min_confidence": min_confidence,
+                "allow_overlap": allow_same_player,
+            },
+            apply_button_key=f"apply_live_smart_profile_{sport_label}",
+            apply_callback=lambda profile: {
+                live_legs_session_key: int(profile.get("recommended_legs", legs)),
+                live_min_conf_session_key: int(profile.get("recommended_min_confidence", min_confidence)),
+                live_same_player_session_key: bool(profile.get("recommended_same_player", allow_same_player)),
+            },
+            pending_updates_key=live_profile_pending_updates_key,
+        )
             if is_dfs and str(smart_parlay_profiles["dfs"].get("recommended_target_label") or "").strip():
                 st.caption(
                     f"Smart DFS destination preference: {smart_parlay_profiles['dfs']['recommended_target_label']}. "
@@ -3549,12 +3563,13 @@ with tab3:
                 "allow_overlap": allow_same_team,
             },
             apply_button_key=f"apply_demo_smart_profile_{sport_label}",
-            apply_callback=lambda profile: (
-                st.session_state.__setitem__(demo_legs_session_key, int(profile.get("recommended_legs", legs))),
-                st.session_state.__setitem__(demo_min_conf_session_key, int(profile.get("recommended_min_confidence", min_confidence))),
-                st.session_state.__setitem__(demo_style_session_key, str(profile.get("recommended_style", style))),
-                st.session_state.__setitem__(demo_same_team_session_key, bool(profile.get("recommended_same_team", allow_same_team))),
-            ),
+            apply_callback=lambda profile: {
+                demo_legs_session_key: int(profile.get("recommended_legs", legs)),
+                demo_min_conf_session_key: int(profile.get("recommended_min_confidence", min_confidence)),
+                demo_style_session_key: str(profile.get("recommended_style", style)),
+                demo_same_team_session_key: bool(profile.get("recommended_same_team", allow_same_team)),
+            },
+            pending_updates_key=demo_profile_pending_updates_key,
         )
         if is_dfs and str(smart_parlay_profiles["dfs"].get("recommended_target_label") or "").strip():
             st.caption(
