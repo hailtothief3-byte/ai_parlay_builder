@@ -618,6 +618,35 @@ def build_smart_mode_status_summary(
     }
 
 
+def build_posture_change_note(weekly_review: dict[str, object], monthly_review: dict[str, object]) -> str:
+    weekly_current = dict(weekly_review.get("current_summary") or {})
+    weekly_prior = dict(weekly_review.get("prior_summary") or {})
+    monthly_current = dict(monthly_review.get("current_summary") or {})
+    monthly_prior = dict(monthly_review.get("prior_summary") or {})
+    weekly_hit_delta = float(weekly_current.get("hit_rate", 0.0) or 0.0) - float(weekly_prior.get("hit_rate", 0.0) or 0.0)
+    monthly_units_delta = float(monthly_current.get("profit_units", 0.0) or 0.0) - float(monthly_prior.get("profit_units", 0.0) or 0.0)
+    if weekly_hit_delta <= -0.04:
+        return f"Posture cooled because weekly hit rate slipped by {weekly_hit_delta * 100:.1f} points versus the prior window."
+    if weekly_hit_delta >= 0.04:
+        return f"Posture firmed up because weekly hit rate improved by {weekly_hit_delta * 100:.1f} points versus the prior window."
+    if monthly_units_delta <= -1.0:
+        return f"Posture is leaning more selective because monthly profit is down {monthly_units_delta:+.2f} units versus the prior month."
+    if monthly_units_delta >= 1.0:
+        return f"Posture has a little more room because monthly profit improved by {monthly_units_delta:+.2f} units versus the prior month."
+    return ""
+
+
+def build_priority_badge_markup(label: str, tone: str) -> str:
+    tone_map = {
+        "good": "priority-strip__badge priority-strip__badge--good",
+        "warn": "priority-strip__badge priority-strip__badge--warn",
+        "alert": "priority-strip__badge priority-strip__badge--alert",
+        "info": "priority-strip__badge priority-strip__badge--info",
+        "neutral": "priority-strip__badge",
+    }
+    return f'<span class="{tone_map.get(tone, tone_map["neutral"])}">{label}</span>'
+
+
 def render_top_priority_strip(
     operating_mode: dict[str, str],
     priority_cards: list[dict[str, str]],
@@ -630,6 +659,7 @@ def render_top_priority_strip(
     manual_override_enabled: bool,
     last_sync,
     sync_enabled: bool,
+    collapsed: bool,
     sport_label: str,
     is_dfs: bool,
 ) -> None:
@@ -638,6 +668,7 @@ def render_top_priority_strip(
     freshness = build_sync_freshness_summary(last_sync, sync_enabled)
     risk_posture = build_risk_posture_summary(operating_mode, weekly_review, monthly_review, is_dfs)
     smart_mode = build_smart_mode_status_summary(source_summary_df, smart_weight_profile, manual_override_enabled)
+    posture_change_note = build_posture_change_note(weekly_review, monthly_review)
     source_badges: list[str] = []
     if isinstance(source_summary_df, pd.DataFrame) and not source_summary_df.empty and "source" in source_summary_df.columns:
         for _, row in source_summary_df.head(2).iterrows():
@@ -645,8 +676,17 @@ def render_top_priority_strip(
             roi = float(row.get("roi_per_pick", 0.0) or 0.0)
             picks = int(row.get("picks", 0) or 0)
             source_badges.append(
-                f'<span class="priority-strip__badge">{badge_label}: {roi:+.2f} u/pick over {picks} picks</span>'
+                build_priority_badge_markup(f"{badge_label}: {roi:+.2f} u/pick over {picks} picks", "neutral")
             )
+    freshness_tone = "info"
+    if freshness.get("title") == "Fresh sync":
+        freshness_tone = "good"
+    elif freshness.get("title") in {"Aging sync", "Sync not recent", "Sync time unclear"}:
+        freshness_tone = "warn"
+    elif freshness.get("title") == "Stale board risk":
+        freshness_tone = "alert"
+    risk_tone = {"Aggressive": "good", "Balanced": "info", "Conservative": "warn"}.get(risk_posture.get("title", ""), "neutral")
+    smart_tone = "warn" if manual_override_enabled or smart_mode.get("title") == "Manual test close" else "good"
     posture_label = "DFS posture" if is_dfs else f"{sport_label} posture".strip()
     cards_markup: list[str] = []
     for card in top_cards:
@@ -659,6 +699,20 @@ def render_top_priority_strip(
                 f"</div>"
             )
         )
+    badges_markup = (
+        build_priority_badge_markup(f"Freshness: {freshness.get('title', '')}", freshness_tone)
+        + build_priority_badge_markup(f"Risk: {risk_posture.get('title', '')}", risk_tone)
+        + build_priority_badge_markup(f"Smart: {smart_mode.get('title', '')}", smart_tone)
+        + "".join(source_badges)
+    )
+    cards_section = f'<div class="priority-strip__cards">{"".join(cards_markup)}</div>' if not collapsed else ""
+    detail_section = (
+        f'<div class="priority-strip__body" style="margin-top:0.75rem;">{freshness.get("body", "")}</div>'
+        f'<div class="priority-strip__body" style="margin-top:0.45rem;">{risk_posture.get("body", "")}</div>'
+        f'<div class="priority-strip__body" style="margin-top:0.45rem;">{smart_mode.get("body", "")}</div>'
+    )
+    if posture_change_note and not collapsed:
+        detail_section += f'<div class="priority-strip__body" style="margin-top:0.55rem;font-style:italic;">{posture_change_note}</div>'
     priority_markup = (
         f'<div class="priority-strip">'
         f'<div class="priority-strip__mode">'
@@ -669,21 +723,15 @@ def render_top_priority_strip(
         f'<strong>{pulse.get("title", "")}</strong>'
         f'<span>{pulse.get("body", "")}</span>'
         f'</div>'
-        f'<div class="priority-strip__badges">'
-        f'<span class="priority-strip__badge">Freshness: {freshness.get("title", "")}</span>'
-        f'<span class="priority-strip__badge">Risk: {risk_posture.get("title", "")}</span>'
-        f'<span class="priority-strip__badge">Smart: {smart_mode.get("title", "")}</span>'
-        f'{"".join(source_badges)}'
+        f'<div class="priority-strip__badges">{badges_markup}</div>'
+        f'{detail_section}'
         f'</div>'
-        f'<div class="priority-strip__body" style="margin-top:0.75rem;">{freshness.get("body", "")}</div>'
-        f'<div class="priority-strip__body" style="margin-top:0.45rem;">{risk_posture.get("body", "")}</div>'
-        f'<div class="priority-strip__body" style="margin-top:0.45rem;">{smart_mode.get("body", "")}</div>'
-        f'</div>'
-        f'<div class="priority-strip__cards">{"".join(cards_markup)}</div>'
+        f'{cards_section}'
         f'</div>'
     )
     st.markdown(priority_markup, unsafe_allow_html=True)
 
+    top_action_cols = st.columns([1.1, 1, 1, 1])
     default_target_map = {
         "Edge Scanner": "edge_scanner",
         "Parlay Lab": "parlay_lab",
@@ -691,8 +739,15 @@ def render_top_priority_strip(
         "Backtest": "backtest",
         "Live Board": "live_board",
     }
-    action_col1, action_col2, action_col3 = st.columns(3)
-    if action_col1.button(
+    if top_action_cols[0].button(
+        "Expand Priorities" if collapsed else "Collapse Priorities",
+        key="top_priority_toggle",
+        use_container_width=True,
+    ):
+        st.session_state["top_priority_strip_collapsed"] = not collapsed
+        persist_preference_if_changed("__app__", "top_priority_strip_collapsed", not collapsed, False)
+        st.rerun()
+    if top_action_cols[1].button(
         f"Focus {operating_mode.get('default_workflow', 'Overview')}",
         key="top_priority_focus_mode",
         use_container_width=True,
@@ -705,17 +760,17 @@ def render_top_priority_strip(
     if top_cards:
         first_card = top_cards[0]
         first_label = str(first_card.get("action_label") or "Use Top Priority")
-        if action_col2.button(first_label, key="top_priority_card_one", use_container_width=True):
+        if top_action_cols[2].button(first_label, key="top_priority_card_one", use_container_width=True):
             handle_recommendation_card_action(first_card)
     else:
-        action_col2.empty()
+        top_action_cols[2].empty()
     if len(top_cards) > 1:
         second_card = top_cards[1]
         second_label = str(second_card.get("action_label") or "Use Next Priority")
-        if action_col3.button(second_label, key="top_priority_card_two", use_container_width=True):
+        if top_action_cols[3].button(second_label, key="top_priority_card_two", use_container_width=True):
             handle_recommendation_card_action(second_card)
     else:
-        action_col3.empty()
+        top_action_cols[3].empty()
 
 
 def build_overview_next_step_cards(
@@ -2563,6 +2618,26 @@ header[data-testid="stHeader"] [role="button"]:hover,
     font-size: 0.76rem;
     font-weight: 700;
 }
+.priority-strip__badge--good {
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.22);
+    color: #0f8a63;
+}
+.priority-strip__badge--warn {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.24);
+    color: #b7791f;
+}
+.priority-strip__badge--alert {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.24);
+    color: #c24141;
+}
+.priority-strip__badge--info {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.22);
+    color: #2563eb;
+}
 .section-header {
     margin: 0.1rem 0 0.9rem;
 }
@@ -2868,6 +2943,7 @@ sport_labels = get_sport_labels()
 app_sport_session_key = "selected_sport_label"
 sync_view_preference_state("__app__", app_sport_session_key, "selected_sport_label", sport_labels[0])
 sync_bool_view_preference_state("__app__", "smart_weights_override_enabled", "smart_weights_override_enabled", False)
+sync_bool_view_preference_state("__app__", "top_priority_strip_collapsed", "top_priority_strip_collapsed", False)
 sync_typed_view_preference_state("__app__", "smart_model_weight", "smart_model_weight", 0.42, float)
 sync_typed_view_preference_state("__app__", "smart_confidence_weight", "smart_confidence_weight", 0.28, float)
 sync_typed_view_preference_state("__app__", "smart_edge_multiplier", "smart_edge_multiplier", 1.45, float)
@@ -3033,6 +3109,7 @@ render_top_priority_strip(
     manual_override_enabled=bool(manual_smart_weight_overrides),
     last_sync=last_sync,
     sync_enabled=sync_enabled,
+    collapsed=bool(st.session_state.get("top_priority_strip_collapsed", False)),
     sport_label=sport_label,
     is_dfs=is_dfs,
 )
