@@ -1760,6 +1760,14 @@ def set_results_grading_focus(target: str) -> None:
     st.session_state["results_grading_section_focus_target"] = target
 
 
+def set_parlay_lab_focus(target: str) -> None:
+    st.session_state["parlay_lab_section_focus_target"] = target
+
+
+def set_backtest_focus(target: str) -> None:
+    st.session_state["backtest_section_focus_target"] = target
+
+
 def sync_view_preference_state(sport_label: str, session_key: str, preference_key: str, default: str) -> None:
     if session_key not in st.session_state:
         st.session_state[session_key] = get_view_preference(sport_label, preference_key, default)
@@ -2126,6 +2134,35 @@ header[data-testid="stHeader"] [role="button"]:hover,
 @media (max-width: 860px) {
     [data-testid="stMetricValue"] {
         font-size: clamp(1.45rem, 4.6vw, 2.1rem);
+    }
+    .app-hero {
+        padding: 1rem 1rem 1.1rem;
+    }
+    .app-hero__title {
+        font-size: clamp(1.85rem, 7vw, 2.55rem);
+    }
+    .app-hero__subtitle {
+        font-size: 1rem;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        flex-wrap: wrap;
+    }
+    .stTabs [data-baseweb="tab"] {
+        flex: 1 1 calc(50% - 0.35rem);
+        justify-content: center;
+        min-height: 44px;
+        text-align: center;
+    }
+    [data-testid="stDataFrame"] div[role="grid"] {
+        font-size: 0.84rem;
+    }
+    .stButton > button {
+        min-height: 44px;
+    }
+}
+@media (max-width: 640px) {
+    .stTabs [data-baseweb="tab"] {
+        flex: 1 1 100%;
     }
 }
 [data-testid="stDataFrame"] {
@@ -3314,6 +3351,7 @@ with tab3:
     render_section_header("Parlay Lab", "Build live or demo tickets with clearer stake planning and model context.")
     if st.session_state.get("dashboard_focus_target") == "parlay_lab":
         st.success("Notification focus is set to Parlay Lab. This is the right place to turn strong watchlist alerts into a draft ticket.")
+    parlay_focus_target = st.session_state.get("parlay_lab_section_focus_target", "")
     saved_ticket_override_active = st.session_state.get("parlay_source_session_override") == "saved_ticket"
     saved_ticket_payload = st.session_state.get("parlay_saved_ticket_payload", [])
     saved_ticket_source = str(st.session_state.get("parlay_saved_ticket_source", "live_edges"))
@@ -3347,6 +3385,18 @@ with tab3:
         args=(sport_label, parlay_source_session_key, "parlay_source"),
     )
     persist_preference_if_changed(sport_label, "parlay_source", source, "Live edges")
+    parlay_jump_labels = [
+        ("smart_profiles", "Jump to Smart Profiles"),
+        ("builder", "Jump to Builder"),
+        ("audit", "Jump to Leg Audit"),
+    ]
+    if is_dfs:
+        parlay_jump_labels.append(("dfs_autoslip", "Jump to DFS Auto-Slip"))
+    parlay_jump_cols = st.columns(len(parlay_jump_labels))
+    for idx, (target, label) in enumerate(parlay_jump_labels):
+        if parlay_jump_cols[idx].button(label, key=f"parlay_lab_jump_{target}", use_container_width=True):
+            set_parlay_lab_focus(target)
+            st.rerun()
 
     if source == "Live edges":
         selected_live_dfs_adapter = None
@@ -3411,6 +3461,8 @@ with tab3:
                 args=(sport_label, live_same_player_session_key, "live_same_player"),
             )
             persist_preference_if_changed(sport_label, "live_same_player", allow_same_player, False)
+            if parlay_focus_target == "smart_profiles":
+                st.info("Parlay Lab jump is focused on Smart Profiles below.")
             render_smart_parlay_profile_panel(
                 profile=smart_parlay_profiles["live"],
                 title="Smart Live Parlay Profile",
@@ -3436,6 +3488,8 @@ with tab3:
 
             candidates = edge_df.copy()
             candidates = candidates[candidates["coverage_status"] == "Live"].copy()
+            if parlay_focus_target == "builder":
+                st.info("Parlay Lab jump is focused on the live builder settings and ticket draft below.")
             if parlay_candidate_pool == "Watchlist alerts":
                 candidates = get_watchlist_alerts(candidates, sport_label)
             else:
@@ -3558,6 +3612,8 @@ with tab3:
                     use_container_width=True,
                 )
                 st.markdown("#### Parlay Leg Audit")
+                if parlay_focus_target == "audit":
+                    st.info("Parlay Lab jump is focused on the live parlay leg audit below.")
                 parlay_audit_candidates = parlay_df.sort_values(["smart_score", "smart_expected_win_rate", "edge"], ascending=False).copy() if "smart_score" in parlay_df.columns else parlay_df.copy()
                 if parlay_audit_candidates.empty or "smart_audit_label" not in parlay_audit_candidates.columns:
                     st.caption("No smart audit is available for this parlay build yet.")
@@ -3590,6 +3646,8 @@ with tab3:
                             hide_index=True,
                         )
                 if is_dfs:
+                    if parlay_focus_target == "dfs_autoslip":
+                        st.info("Parlay Lab jump is focused on the DFS auto-slip handoff below.")
                     selected_live_dfs_adapter = render_dfs_autoslip_panel(
                         card_df=parlay_df,
                         sport_label=sport_label,
@@ -3678,6 +3736,8 @@ with tab3:
         persist_preference_if_changed(sport_label, "demo_min_confidence", min_confidence, 70)
         persist_preference_if_changed(sport_label, "demo_parlay_style", style, "Safe")
         persist_preference_if_changed(sport_label, "demo_same_team", allow_same_team, False)
+        if parlay_focus_target == "smart_profiles":
+            st.info("Parlay Lab jump is focused on Smart Profiles below.")
         render_smart_parlay_profile_panel(
             profile=smart_parlay_profiles["demo"],
             title="Smart Demo Parlay Profile",
@@ -3718,6 +3778,8 @@ with tab3:
             )
 
         total_demo_predictions = len(demo_bundle.predictions)
+        if parlay_focus_target == "builder":
+            st.info("Parlay Lab jump is focused on the demo builder settings and ticket draft below.")
         if saved_ticket_override_active and saved_ticket_source == "demo_predictions" and saved_ticket_payload:
             st.info(f"Rebuilding from the selected saved demo ticket using `{style}` as the current destination profile.")
         else:
@@ -3803,6 +3865,8 @@ with tab3:
                 demo_parlay_display["model_prob"] = (pd.to_numeric(demo_parlay_display["model_prob"], errors="coerce") * 100).round(2)
             st.dataframe(compact_numeric_table(prettify_table_headers(demo_parlay_display)), use_container_width=True)
             if is_dfs:
+                if parlay_focus_target == "dfs_autoslip":
+                    st.info("Parlay Lab jump is focused on the DFS auto-slip handoff below.")
                 selected_demo_dfs_adapter = render_dfs_autoslip_panel(
                     card_df=parlay,
                     sport_label=sport_label,
@@ -4000,7 +4064,7 @@ with tab5:
     ]
 
     st.markdown("### Workflow Status")
-    st.caption("Use the action buttons below each workflow card to jump into the relevant queue or journal.")
+    st.caption("Use either the workflow jump button or the action button on each card to move straight into the relevant queue or journal.")
     status_tones = (
         {
             "Ready": {"bg": "#0f2b1f", "fg": "#8ee3b7", "border": "#1f6b4f", "card": "#0f1722", "title": "#e5eef8", "body": "#a7b6c8"},
@@ -4019,6 +4083,17 @@ with tab5:
     status_cols = st.columns(len(results_status_rows))
     for idx, row in enumerate(results_status_rows):
         tone = status_tones.get(row["Status"], status_tones["Pending"])
+        if status_cols[idx].button(
+            f"Jump to {row['Workflow']}",
+            key=f"results_status_card_jump_{idx}",
+            use_container_width=True,
+        ):
+            set_dashboard_focus(str(row["ActionTarget"]))
+            if str(row.get("ActionTarget") or "") == "results_grading" and str(row.get("ActionSectionTarget") or "").strip():
+                set_results_grading_focus(str(row["ActionSectionTarget"]))
+            elif str(row.get("ActionTarget") or "") == "bankroll_journal":
+                set_results_grading_focus("bankroll_journal")
+            st.rerun()
         status_cols[idx].markdown(
             f"""
             <div style="
@@ -5164,6 +5239,14 @@ with tab5:
 
 with tab6:
     render_section_header("Backtest", "Review true-results performance, calibration, CLV proxy signals, and profit trends.")
+    backtest_focus_target = st.session_state.get("backtest_section_focus_target", "")
+    backtest_jump_col1, backtest_jump_col2 = st.columns(2)
+    if backtest_jump_col1.button("Jump to True Results", key="backtest_jump_true_results", use_container_width=True):
+        set_backtest_focus("true_results")
+        st.rerun()
+    if backtest_jump_col2.button("Jump to CLV Diagnostics", key="backtest_jump_clv", use_container_width=True):
+        set_backtest_focus("clv_diagnostics")
+        st.rerun()
     true_backtest_df = pd.DataFrame()
     clv_backtest_df = pd.DataFrame()
 
@@ -5176,6 +5259,8 @@ with tab6:
     else:
         if not true_backtest_df.empty:
             st.markdown("### True Results Backtest")
+            if backtest_focus_target == "true_results":
+                st.info("Backtest jump is focused on True Results diagnostics below.")
             total_picks = len(true_backtest_df)
             hit_rate = true_backtest_df["won"].mean()
             avg_edge = true_backtest_df["edge"].mean()
@@ -5257,6 +5342,8 @@ with tab6:
 
         if not clv_backtest_df.empty:
             st.markdown("### CLV Proxy Diagnostics")
+            if backtest_focus_target == "clv_diagnostics":
+                st.info("Backtest jump is focused on CLV proxy diagnostics below.")
             clv_hit_rate = clv_backtest_df["clv_win"].mean()
             avg_line_move = clv_backtest_df["line_move"].mean()
             avg_edge = clv_backtest_df["edge"].mean()
