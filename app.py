@@ -575,36 +575,30 @@ def render_top_priority_strip(
     cards_markup: list[str] = []
     for card in top_cards:
         cards_markup.append(
-            f"""
-            <div class="priority-strip__card">
-                <div class="priority-strip__eyebrow">{card.get('status', 'priority')}</div>
-                <div class="priority-strip__title">{card.get('title', '')}</div>
-                <div class="priority-strip__body">{card.get('body', '')}</div>
-            </div>
-            """
+            (
+                f'<div class="priority-strip__card">'
+                f'<div class="priority-strip__eyebrow">{card.get("status", "priority")}</div>'
+                f'<div class="priority-strip__title">{card.get("title", "")}</div>'
+                f'<div class="priority-strip__body">{card.get("body", "")}</div>'
+                f"</div>"
+            )
         )
-    st.markdown(
-        f"""
-        <div class="priority-strip">
-            <div class="priority-strip__mode">
-                <div class="priority-strip__eyebrow">{posture_label}</div>
-                <div class="priority-strip__mode-title">{operating_mode.get('title', '')}</div>
-                <div class="priority-strip__body">{operating_mode.get('body', '')}</div>
-                <div class="priority-strip__pulse">
-                    <strong>{pulse.get('title', '')}</strong>
-                    <span>{pulse.get('body', '')}</span>
-                </div>
-                <div class="priority-strip__badges">
-                    {''.join(source_badges)}
-                </div>
-            </div>
-            <div class="priority-strip__cards">
-                {''.join(cards_markup)}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    priority_markup = (
+        f'<div class="priority-strip">'
+        f'<div class="priority-strip__mode">'
+        f'<div class="priority-strip__eyebrow">{posture_label}</div>'
+        f'<div class="priority-strip__mode-title">{operating_mode.get("title", "")}</div>'
+        f'<div class="priority-strip__body">{operating_mode.get("body", "")}</div>'
+        f'<div class="priority-strip__pulse">'
+        f'<strong>{pulse.get("title", "")}</strong>'
+        f'<span>{pulse.get("body", "")}</span>'
+        f'</div>'
+        f'<div class="priority-strip__badges">{"".join(source_badges)}</div>'
+        f'</div>'
+        f'<div class="priority-strip__cards">{"".join(cards_markup)}</div>'
+        f'</div>'
     )
+    st.markdown(priority_markup, unsafe_allow_html=True)
 
     default_target_map = {
         "Edge Scanner": "edge_scanner",
