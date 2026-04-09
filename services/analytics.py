@@ -241,6 +241,61 @@ def build_true_source_timeseries(backtest_df: pd.DataFrame, rolling_window: int 
     return cumulative_profit, rolling_hit_rate
 
 
+def build_experiment_snapshot(
+    graded_df: pd.DataFrame,
+    source_summary_df: pd.DataFrame,
+    rolling_window: int = 10,
+) -> dict[str, object]:
+    snapshot: dict[str, object] = {
+        "graded_pick_count": int(len(graded_df)) if not graded_df.empty else 0,
+        "source_summary": [],
+        "recent_experiments": [],
+        "cumulative_units": [],
+        "rolling_hit_rate": [],
+    }
+    if not source_summary_df.empty:
+        snapshot["source_summary"] = source_summary_df.to_dict(orient="records")
+
+    if graded_df.empty:
+        return snapshot
+
+    experiment_log = graded_df.copy()
+    if "source" in experiment_log.columns:
+        experiment_log = experiment_log[
+            experiment_log["source"].isin(["smart_pick_engine_auto", "smart_pick_engine_manual", "edge_scanner"])
+        ].copy()
+    if not experiment_log.empty:
+        keep_columns = [
+            column for column in [
+                "resolved_at",
+                "source",
+                "player",
+                "market",
+                "pick",
+                "summary",
+                "grade",
+                "profit_units",
+                "model_prob",
+                "edge",
+                "confidence",
+            ]
+            if column in experiment_log.columns
+        ]
+        if keep_columns:
+            trimmed_log = experiment_log[keep_columns].copy()
+            if "resolved_at" in trimmed_log.columns:
+                trimmed_log["resolved_at"] = pd.to_datetime(trimmed_log["resolved_at"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M:%S")
+            snapshot["recent_experiments"] = trimmed_log.sort_values("resolved_at", ascending=False).head(50).to_dict(orient="records")
+
+    cumulative_profit, rolling_hit_rate = build_true_source_timeseries(graded_df, rolling_window=rolling_window)
+    if not cumulative_profit.empty:
+        snapshot["cumulative_units"] = cumulative_profit.reset_index().to_dict(orient="records")
+    if not rolling_hit_rate.empty:
+        snapshot["rolling_hit_rate"] = rolling_hit_rate.reset_index().to_dict(orient="records")
+
+    return snapshot
+
+
 def build_ticket_benchmark_summary(graded_picks_df: pd.DataFrame, leg_count: int) -> dict[str, float | int | None]:
     if graded_picks_df.empty or leg_count <= 0:
         return {

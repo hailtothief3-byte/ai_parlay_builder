@@ -15,6 +15,61 @@ from sports_config import get_sport_config
 TICKET_META_PREFIX = "[APB_META]"
 
 
+def _american_to_decimal(price: float | int | None) -> float | None:
+    if price is None or pd.isna(price):
+        return None
+    try:
+        numeric = float(price)
+    except Exception:
+        return None
+    if numeric == 0:
+        return None
+    if numeric > 0:
+        return 1.0 + (numeric / 100.0)
+    return 1.0 + (100.0 / abs(numeric))
+
+
+def _estimate_ticket_profit_units(legs: pd.DataFrame, ticket_status: str) -> tuple[float | None, float | None]:
+    if legs.empty or str(ticket_status).strip().lower() == "open":
+        return None, None
+
+    working = legs.copy()
+    if "price" not in working.columns:
+        return None, None
+
+    decimal_prices: list[float] = []
+    win_count = 0
+    push_count = 0
+    loss_count = 0
+    missing_price_count = 0
+
+    for _, leg in working.iterrows():
+        grade = str(leg.get("grade") or "").strip().lower()
+        if grade == "win":
+            win_count += 1
+            decimal_price = _american_to_decimal(leg.get("price"))
+            if decimal_price is None:
+                missing_price_count += 1
+                decimal_price = 2.0
+            decimal_prices.append(decimal_price)
+        elif grade == "push":
+            push_count += 1
+        elif grade == "loss":
+            loss_count += 1
+
+    if loss_count > 0:
+        return -1.0, float(missing_price_count)
+    if win_count == 0 and push_count > 0:
+        return 0.0, float(missing_price_count)
+    if not decimal_prices:
+        return None, float(missing_price_count)
+
+    estimated_decimal_payout = 1.0
+    for decimal_price in decimal_prices:
+        estimated_decimal_payout *= decimal_price
+    return round(estimated_decimal_payout - 1.0, 3), float(missing_price_count)
+
+
 def _pack_ticket_notes(notes: str | None = None, metadata: dict | None = None) -> str | None:
     clean_notes = str(notes or "").strip()
     if not metadata:
@@ -282,6 +337,12 @@ def get_ticket_summary_with_grades(sport_label: str | None = None) -> pd.DataFra
             resolved_ratio = resolved_legs / len(legs)
         if open_legs == 0 and len(legs) > 0:
             ticket_outcome_score = (won_legs + (push_legs * 0.5)) / len(legs)
+        graded_legs = legs.copy()
+        if ticket["source"] == "live_edges":
+            graded_legs = merged.copy()
+            if "grade" not in graded_legs.columns:
+                graded_legs["grade"] = None
+        ticket_profit_units, ticket_missing_price_legs = _estimate_ticket_profit_units(graded_legs, ticket_status)
 
         graded_rows.append(
             {
@@ -292,6 +353,8 @@ def get_ticket_summary_with_grades(sport_label: str | None = None) -> pd.DataFra
                 "open_legs": open_legs,
                 "resolved_ratio": resolved_ratio,
                 "ticket_outcome_score": ticket_outcome_score,
+                "ticket_profit_units": ticket_profit_units,
+                "ticket_missing_price_legs": ticket_missing_price_legs,
                 "ticket_status_live": ticket_status,
             }
         )

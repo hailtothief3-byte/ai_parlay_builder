@@ -69,9 +69,10 @@ def _resolve_live_profile(ticket_summary_df: pd.DataFrame) -> dict[str, object]:
             sample_size=("ticket_id", "count"),
             avg_score=("status_score", "mean"),
             avg_ticket_outcome=("ticket_outcome_score", "mean"),
+            avg_ticket_profit=("ticket_profit_units", "mean"),
         )
         .reset_index()
-        .sort_values(["avg_ticket_outcome", "avg_score", "sample_size"], ascending=[False, False, False])
+        .sort_values(["avg_ticket_profit", "avg_ticket_outcome", "avg_score", "sample_size"], ascending=[False, False, False, False])
     )
     recommended_legs = int(leg_summary.iloc[0]["leg_count"]) if not leg_summary.empty else 3
 
@@ -112,10 +113,13 @@ def _resolve_live_profile(ticket_summary_df: pd.DataFrame) -> dict[str, object]:
     leg_sample = int(leg_summary.iloc[0]["sample_size"]) if not leg_summary.empty else 0
     leg_score = float(leg_summary.iloc[0]["avg_score"]) if not leg_summary.empty else 0.0
     leg_outcome = float(leg_summary.iloc[0]["avg_ticket_outcome"]) if not leg_summary.empty and pd.notna(leg_summary.iloc[0]["avg_ticket_outcome"]) else leg_score
+    leg_profit = float(leg_summary.iloc[0]["avg_ticket_profit"]) if not leg_summary.empty and pd.notna(leg_summary.iloc[0]["avg_ticket_profit"]) else None
     reason = (
         f"Settled live tickets lean toward {recommended_legs} legs with an average ticket outcome score of {leg_outcome:.2f} across {leg_sample} tickets. "
         f"The strongest ticket cluster also centers around about {recommended_min_confidence} confidence."
     )
+    if leg_profit is not None:
+        reason += f" That cluster is also averaging about {leg_profit:+.2f} estimated ticket units."
     if duplicate_penalty:
         reason += " Repeated same-player exposure has lagged cleaner ticket builds in your settled history, so the profile recommends keeping that blocked."
     else:

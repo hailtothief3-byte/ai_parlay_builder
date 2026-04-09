@@ -19,7 +19,7 @@ from services.dfs_slip_service import (
     get_dfs_slip_adapters,
     recommend_dfs_slip_adapter,
 )
-from services.analytics import build_calibration_summary, build_clv_backtest, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary
+from services.analytics import build_calibration_summary, build_clv_backtest, build_experiment_snapshot, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary
 from services.board_service import get_latest_board
 from services.bankroll_service import annotate_stake_recommendations, recommend_parlay_stake
 from services.bankroll_journal_service import add_journal_entry, build_bankroll_kpis, build_bankroll_summary, get_journal_entries, settle_journal_entry, sync_ticket_journal_entries
@@ -1286,6 +1286,50 @@ def build_override_recommendation(source_summary_df: pd.DataFrame) -> tuple[str,
     if roi_lift > 0.08 or hit_lift > 0.04:
         return ("Stay manual", f"Manual overrides are ahead by {roi_lift:+.2f} units per pick and {hit_lift * 100:+.1f} hit-rate points across the current sample.")
     return ("Too close to call", f"Manual and auto are performing similarly right now: {roi_lift:+.2f} units per pick and {hit_lift * 100:+.1f} hit-rate points apart.")
+
+
+def apply_recommended_smart_mode(recommendation_title: str, auto_weight_profile: dict[str, float | int | str]) -> bool:
+    normalized = str(recommendation_title or "").strip().lower()
+    if normalized == "switch back to auto":
+        st.session_state["smart_weights_override_enabled"] = False
+        persist_preference_if_changed("__app__", "smart_weights_override_enabled", False, False)
+        return True
+    if normalized == "stay manual":
+        st.session_state["smart_weights_override_enabled"] = True
+        persist_preference_if_changed("__app__", "smart_weights_override_enabled", True, False)
+        defaults = {
+            "smart_model_weight": float(auto_weight_profile.get("model_score_weight", 0.42) or 0.42),
+            "smart_confidence_weight": float(auto_weight_profile.get("confidence_score_weight", 0.28) or 0.28),
+            "smart_edge_multiplier": float(auto_weight_profile.get("edge_multiplier", 1.45) or 1.45),
+            "smart_history_market_weight": float(auto_weight_profile.get("history_market_weight", 0.36) or 0.36),
+        }
+        for session_key, value in defaults.items():
+            if session_key not in st.session_state:
+                st.session_state[session_key] = value
+        return True
+    return False
+
+
+def build_experiment_snapshot_payload(
+    graded_df: pd.DataFrame,
+    source_summary_df: pd.DataFrame,
+    auto_weight_profile: dict[str, float | int | str],
+    resolved_weight_profile: dict[str, float | int | str],
+    recommendation_title: str,
+    recommendation_body: str,
+) -> str:
+    snapshot = build_experiment_snapshot(graded_df, source_summary_df, rolling_window=10)
+    snapshot.update(
+        {
+            "generated_at_utc": pd.Timestamp.utcnow().isoformat(),
+            "recommendation_title": recommendation_title,
+            "recommendation_body": recommendation_body,
+            "auto_weight_profile": auto_weight_profile,
+            "resolved_weight_profile": resolved_weight_profile,
+            "manual_override_enabled": bool(st.session_state.get("smart_weights_override_enabled", False)),
+        }
+    )
+    return json.dumps(snapshot, indent=2, default=str)
 
 
 def render_smart_parlay_profile_panel(
@@ -3634,6 +3678,9 @@ with tab5:
     metric_col3.metric("Graded Picks", f"{len(graded_df)}")
     metric_col4.metric("Open Tracked Picks", f"{len(unresolved_tracked_df)}")
 
+    source_summary_df = build_true_source_summary(graded_df)
+    override_recommendation_title, override_recommendation_body = build_override_recommendation(source_summary_df)
+
     st.markdown("### Smart Pick Learning")
     if graded_df.empty:
         render_empty_state(
@@ -3720,6 +3767,14 @@ with tab5:
             compare_override_col4.metric("Auto market history", f"{float(auto_weight_profile['history_market_weight']):.2f}")
             st.markdown("**Override Recommendation**")
             st.caption(f"{override_recommendation_title}: {override_recommendation_body}")
+            promote_col1, promote_col2 = st.columns([1.2, 1.8])
+            if promote_col1.button("Promote Recommended Mode", use_container_width=True):
+                if apply_recommended_smart_mode(override_recommendation_title, auto_weight_profile):
+                    st.success(f"Applied recommendation: {override_recommendation_title}.")
+                    st.rerun()
+                else:
+                    st.info("The current recommendation is still observational, so the app is keeping your current smart-engine mode unchanged.")
+            promote_col2.caption("This applies the current recommendation directly to the smart-engine mode. Auto disables manual overrides, while manual keeps your custom slider mix active.")
             if override_enabled:
                 st.info(
                     "Manual overrides are active. Overview, Edge Scanner, and Parlay Lab will all use your custom smart-engine mix until you turn this off."
@@ -3797,8 +3852,6 @@ with tab5:
                 st.dataframe(confidence_learning_display, use_container_width=True, hide_index=True)
 
     st.markdown("### Source Performance")
-    source_summary_df = build_true_source_summary(graded_df)
-    override_recommendation_title, override_recommendation_body = build_override_recommendation(source_summary_df)
     if source_summary_df.empty:
         render_empty_state(
             "No source comparison yet",
@@ -3827,6 +3880,29 @@ with tab5:
             }
         )
         st.dataframe(compact_numeric_table(source_summary_display), use_container_width=True, hide_index=True)
+        snapshot_json = build_experiment_snapshot_payload(
+            graded_df=graded_df,
+            source_summary_df=source_summary_df,
+            auto_weight_profile=auto_weight_profile if "auto_weight_profile" in locals() else build_smart_weight_profile(graded_df),
+            resolved_weight_profile=resolved_weight_profile if "resolved_weight_profile" in locals() else apply_smart_weight_overrides(build_smart_weight_profile(graded_df), manual_smart_weight_overrides),
+            recommendation_title=override_recommendation_title,
+            recommendation_body=override_recommendation_body,
+        )
+        source_export_col1, source_export_col2 = st.columns(2)
+        source_export_col1.download_button(
+            "Download Experiment Snapshot JSON",
+            data=snapshot_json,
+            file_name=f"{sport_label.lower()}_smart_experiment_snapshot.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+        source_export_col2.download_button(
+            "Download Source Comparison CSV",
+            data=source_summary_df.to_csv(index=False),
+            file_name=f"{sport_label.lower()}_source_performance.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
 
         auto_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_auto"].head(1)
         manual_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_manual"].head(1)
@@ -3912,6 +3988,13 @@ with tab5:
                 compact_numeric_table(experiment_log[experiment_log_columns].sort_values("resolved_at", ascending=False).head(40)),
                 use_container_width=True,
                 hide_index=True,
+            )
+            st.download_button(
+                "Download Experiment Log CSV",
+                data=experiment_log.sort_values("resolved_at", ascending=False).to_csv(index=False),
+                file_name=f"{sport_label.lower()}_experiment_log.csv",
+                mime="text/csv",
+                use_container_width=True,
             )
 
         cumulative_source_profit, rolling_source_hit_rate = build_true_source_timeseries(graded_df)
@@ -4313,6 +4396,8 @@ with tab5:
                 "build_min_confidence",
                 "build_smart_profile_mode",
                 "ticket_outcome_score",
+                "ticket_profit_units",
+                "ticket_missing_price_legs",
                 "resolved_ratio",
                 "resolved_legs",
                 "won_legs",
@@ -4326,6 +4411,8 @@ with tab5:
         display_tickets["avg_model_prob"] = (display_tickets["avg_model_prob"] * 100).round(2)
         if "ticket_outcome_score" in display_tickets.columns:
             display_tickets["ticket_outcome_score"] = pd.to_numeric(display_tickets["ticket_outcome_score"], errors="coerce").round(2)
+        if "ticket_profit_units" in display_tickets.columns:
+            display_tickets["ticket_profit_units"] = pd.to_numeric(display_tickets["ticket_profit_units"], errors="coerce").round(2)
         if "resolved_ratio" in display_tickets.columns:
             display_tickets["resolved_ratio"] = (pd.to_numeric(display_tickets["resolved_ratio"], errors="coerce") * 100).round(1)
         if "source" in display_tickets.columns:
@@ -4376,7 +4463,7 @@ with tab5:
             snapshot_col6.metric("Avg model %", f"{float(ticket_row['avg_model_prob']) * 100:.2f}%" if pd.notna(ticket_row["avg_model_prob"]) else "N/A")
             snapshot_col7.metric("Resolved legs", str(ticket_row["resolved_legs"]))
             snapshot_col8.metric("Open legs", str(ticket_row["open_legs"]))
-            outcome_col1, outcome_col2 = st.columns(2)
+            outcome_col1, outcome_col2, outcome_col3 = st.columns(3)
             outcome_col1.metric(
                 "Ticket outcome score",
                 f"{float(ticket_row['ticket_outcome_score']):.2f}" if pd.notna(ticket_row.get("ticket_outcome_score")) else "N/A",
@@ -4385,6 +4472,14 @@ with tab5:
                 "Resolved %",
                 f"{float(ticket_row['resolved_ratio']) * 100:.1f}%" if pd.notna(ticket_row.get("resolved_ratio")) else "N/A",
             )
+            outcome_col3.metric(
+                "Est. ticket units",
+                f"{float(ticket_row['ticket_profit_units']):+.2f}u" if pd.notna(ticket_row.get("ticket_profit_units")) else "N/A",
+            )
+            if pd.notna(ticket_row.get("ticket_missing_price_legs")) and float(ticket_row.get("ticket_missing_price_legs") or 0) > 0:
+                st.caption(
+                    f"Estimated ticket units use stored leg prices when available. {int(float(ticket_row['ticket_missing_price_legs']))} leg(s) were missing price data, so even-money fallback pricing was used for those legs."
+                )
             build_col1, build_col2, build_col3, build_col4 = st.columns(4)
             build_col1.metric("Candidate pool", str(ticket_row.get("build_candidate_pool") or "N/A"))
             build_col2.metric("Build style", str(ticket_row.get("build_style") or "N/A"))
