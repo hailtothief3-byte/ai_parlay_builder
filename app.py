@@ -2426,11 +2426,17 @@ with st.sidebar:
 
     st.divider()
     st.subheader("SportsGameOdds Guard")
-    if sgo_usage.get("enabled"):
+    if sgo_usage.get("auth_error"):
+        st.info(sgo_usage.get("message"))
+        if sgo_usage.get("detail"):
+            st.caption(str(sgo_usage.get("detail")))
+    elif sgo_usage.get("enabled"):
         if sgo_usage.get("ok_to_sync"):
             st.success(sgo_usage.get("message"))
         else:
             st.warning(sgo_usage.get("message"))
+        if sgo_usage.get("detail"):
+            st.caption(str(sgo_usage.get("detail")))
 
         usage_lines = []
         if sgo_usage.get("tier"):
@@ -2513,7 +2519,11 @@ with st.sidebar:
                 reload_runtime_modules()
                 st.rerun()
 
-        if st.button(f"Sync Live {sport_label} Now", use_container_width=True):
+        if st.button(
+            f"Sync Live {sport_label} Now",
+            use_container_width=True,
+            disabled=bool(sgo_usage.get("auth_error")),
+        ):
             provider = get_provider("sportsgameodds")
             sync_result = provider.sync_events_for_labels([sport_label])
             live_projection_counts = build_live_projections_for_sports([sport_label]) if sport_label in {"NBA", "MLB"} else {}
@@ -2551,7 +2561,7 @@ with st.sidebar:
             if current_first_basket_rows > 0:
                 st.success(f"`player_first_basket` is present with {current_first_basket_rows} live rows.")
             else:
-                st.warning("No live `player_first_basket` rows are currently in the board.")
+                st.info("No live `player_first_basket` rows are currently in the board.")
 
             if exotic_debug:
                 candidate_count = int(exotic_debug.get("candidate_market_count", 0) or 0)

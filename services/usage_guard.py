@@ -80,10 +80,21 @@ def safe_get_sportsgameodds_usage_summary() -> dict[str, Any]:
     try:
         return get_sportsgameodds_usage_summary()
     except Exception as exc:
+        formatted_error = format_sgo_error(exc)
+        normalized_error = str(formatted_error or "").lower()
+        if "401" in normalized_error or "invalid api key" in normalized_error or "unauthorized" in normalized_error:
+            return {
+                "enabled": False,
+                "ok_to_sync": False,
+                "auth_error": True,
+                "message": "SportsGameOdds is not available locally because the configured API key is invalid or expired.",
+                "detail": "Update SPORTSGAMEODDS_API_KEY in your local .env to restore live sync and usage checks.",
+            }
         return {
             "enabled": True,
             "ok_to_sync": False,
-            "message": f"Unable to fetch SportsGameOdds usage: {format_sgo_error(exc)}",
+            "message": "Unable to fetch SportsGameOdds usage right now.",
+            "detail": formatted_error,
         }
 
 
