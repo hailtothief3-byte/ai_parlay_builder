@@ -296,6 +296,138 @@ def build_experiment_snapshot(
     return snapshot
 
 
+def build_weekly_model_review(graded_df: pd.DataFrame) -> dict[str, object]:
+    empty_response = {
+        "current_window_label": "Last 7 days",
+        "prior_window_label": "Prior 7 days",
+        "current_summary": {},
+        "prior_summary": {},
+        "source_breakdown": pd.DataFrame(),
+        "market_breakdown": pd.DataFrame(),
+        "insights": [],
+    }
+    if graded_df.empty or "resolved_at" not in graded_df.columns:
+        return empty_response
+
+    working = graded_df.copy()
+    working["resolved_at"] = pd.to_datetime(working["resolved_at"], errors="coerce")
+    working = working[working["resolved_at"].notna()].copy()
+    if working.empty:
+        return empty_response
+
+    latest_resolved = working["resolved_at"].max()
+    if pd.isna(latest_resolved):
+        return empty_response
+    current_start = latest_resolved - pd.Timedelta(days=7)
+    prior_start = current_start - pd.Timedelta(days=7)
+
+    current_df = working[working["resolved_at"] >= current_start].copy()
+    prior_df = working[(working["resolved_at"] >= prior_start) & (working["resolved_at"] < current_start)].copy()
+
+    def _build_window_summary(df: pd.DataFrame) -> dict[str, object]:
+        if df.empty:
+            return {
+                "picks": 0,
+                "hit_rate": 0.0,
+                "profit_units": 0.0,
+                "units_per_pick": 0.0,
+                "avg_model_prob": 0.0,
+                "avg_edge": 0.0,
+                "top_source": "",
+                "top_market": "",
+            }
+        summary = {
+            "picks": int(len(df)),
+            "hit_rate": float(pd.to_numeric(df.get("won"), errors="coerce").fillna(0).mean()) if "won" in df.columns else 0.0,
+            "profit_units": float(pd.to_numeric(df.get("profit_units"), errors="coerce").fillna(0.0).sum()) if "profit_units" in df.columns else 0.0,
+            "units_per_pick": float(pd.to_numeric(df.get("profit_units"), errors="coerce").fillna(0.0).mean()) if "profit_units" in df.columns else 0.0,
+            "avg_model_prob": float(pd.to_numeric(df.get("model_prob"), errors="coerce").dropna().mean()) if "model_prob" in df.columns and not pd.to_numeric(df.get("model_prob"), errors="coerce").dropna().empty else 0.0,
+            "avg_edge": float(pd.to_numeric(df.get("edge"), errors="coerce").dropna().mean()) if "edge" in df.columns and not pd.to_numeric(df.get("edge"), errors="coerce").dropna().empty else 0.0,
+            "top_source": "",
+            "top_market": "",
+        }
+        if "source" in df.columns and not df["source"].dropna().empty:
+            source_summary = (
+                df.groupby("source", observed=False)
+                .agg(profit_units=("profit_units", "sum"), picks=("source", "count"))
+                .reset_index()
+                .sort_values(["profit_units", "picks"], ascending=[False, False])
+            )
+            if not source_summary.empty:
+                summary["top_source"] = str(source_summary.iloc[0]["source"])
+        if "market" in df.columns and not df["market"].dropna().empty:
+            market_summary = (
+                df.groupby("market", observed=False)
+                .agg(profit_units=("profit_units", "sum"), picks=("market", "count"))
+                .reset_index()
+                .sort_values(["profit_units", "picks"], ascending=[False, False])
+            )
+            if not market_summary.empty:
+                summary["top_market"] = str(market_summary.iloc[0]["market"])
+        return summary
+
+    current_summary = _build_window_summary(current_df)
+    prior_summary = _build_window_summary(prior_df)
+
+    source_breakdown = pd.DataFrame()
+    if not current_df.empty and "source" in current_df.columns:
+        source_breakdown = (
+            current_df.groupby("source", observed=False)
+            .agg(
+                picks=("source", "count"),
+                hit_rate=("won", "mean"),
+                profit_units=("profit_units", "sum"),
+                units_per_pick=("profit_units", "mean"),
+            )
+            .reset_index()
+            .sort_values(["profit_units", "hit_rate", "picks"], ascending=[False, False, False])
+        )
+
+    market_breakdown = pd.DataFrame()
+    if not current_df.empty and "market" in current_df.columns:
+        market_breakdown = (
+            current_df.groupby("market", observed=False)
+            .agg(
+                picks=("market", "count"),
+                hit_rate=("won", "mean"),
+                profit_units=("profit_units", "sum"),
+                units_per_pick=("profit_units", "mean"),
+            )
+            .reset_index()
+            .sort_values(["profit_units", "hit_rate", "picks"], ascending=[False, False, False])
+        )
+
+    insights: list[str] = []
+    pick_delta = current_summary["picks"] - prior_summary["picks"]
+    unit_delta = current_summary["profit_units"] - prior_summary["profit_units"]
+    upp_delta = current_summary["units_per_pick"] - prior_summary["units_per_pick"]
+    hit_delta = current_summary["hit_rate"] - prior_summary["hit_rate"]
+
+    if current_summary["picks"] <= 0:
+        insights.append("No graded picks landed in the last 7 days, so the weekly review is waiting on fresh settled results.")
+    else:
+        insights.append(
+            f"Last 7 days logged {current_summary['picks']} graded picks, {pick_delta:+d} versus the prior week, for {current_summary['profit_units']:+.2f} units."
+        )
+        insights.append(
+            f"Weekly hit rate moved {hit_delta * 100:+.1f} points to {current_summary['hit_rate'] * 100:.1f}%, while units per pick shifted {upp_delta:+.2f} to {current_summary['units_per_pick']:+.2f}."
+        )
+        if current_summary["top_source"]:
+            insights.append(f"Best current workflow source: {current_summary['top_source']}.")
+        if current_summary["top_market"]:
+            insights.append(f"Best current market pocket: {current_summary['top_market']}.")
+
+    return {
+        "current_window_label": "Last 7 days",
+        "prior_window_label": "Prior 7 days",
+        "current_summary": current_summary,
+        "prior_summary": prior_summary,
+        "source_breakdown": source_breakdown,
+        "market_breakdown": market_breakdown,
+        "insights": insights,
+    }
+
+
 def build_ticket_benchmark_summary(graded_picks_df: pd.DataFrame, leg_count: int) -> dict[str, float | int | None]:
     if graded_picks_df.empty or leg_count <= 0:
         return {

@@ -19,7 +19,7 @@ from services.dfs_slip_service import (
     get_dfs_slip_adapters,
     recommend_dfs_slip_adapter,
 )
-from services.analytics import build_calibration_summary, build_clv_backtest, build_experiment_snapshot, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary
+from services.analytics import build_calibration_summary, build_clv_backtest, build_experiment_snapshot, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary, build_weekly_model_review
 from services.board_service import get_latest_board
 from services.bankroll_service import annotate_stake_recommendations, recommend_parlay_stake
 from services.bankroll_journal_service import add_journal_entry, build_bankroll_kpis, build_bankroll_summary, get_journal_entries, settle_journal_entry, sync_ticket_journal_entries
@@ -1330,6 +1330,110 @@ def build_experiment_snapshot_payload(
         }
     )
     return json.dumps(snapshot, indent=2, default=str)
+
+
+def render_weekly_model_review(review: dict[str, object]) -> None:
+    st.markdown("### Weekly Model Review")
+    current_summary = dict(review.get("current_summary") or {})
+    prior_summary = dict(review.get("prior_summary") or {})
+    current_label = str(review.get("current_window_label") or "Last 7 days")
+    prior_label = str(review.get("prior_window_label") or "Prior 7 days")
+
+    if int(current_summary.get("picks", 0) or 0) <= 0 and int(prior_summary.get("picks", 0) or 0) <= 0:
+        render_empty_state(
+            "No weekly review yet",
+            "Once the app has settled picks across the last two weekly windows, this review will highlight what improved, what slipped, and where the model is currently strongest.",
+            tone="info",
+        )
+        return
+
+    headline = (
+        f"{current_label} produced {float(current_summary.get('profit_units', 0.0) or 0.0):+.2f} units "
+        f"across {int(current_summary.get('picks', 0) or 0)} graded picks."
+    )
+    st.info(headline)
+
+    review_col1, review_col2, review_col3, review_col4 = st.columns(4)
+    review_col1.metric(
+        "Weekly Units",
+        f"{float(current_summary.get('profit_units', 0.0) or 0.0):+.2f}u",
+        delta=f"{float(current_summary.get('profit_units', 0.0) or 0.0) - float(prior_summary.get('profit_units', 0.0) or 0.0):+.2f}u vs prior",
+    )
+    review_col2.metric(
+        "Weekly Hit Rate",
+        f"{float(current_summary.get('hit_rate', 0.0) or 0.0) * 100:.1f}%",
+        delta=f"{(float(current_summary.get('hit_rate', 0.0) or 0.0) - float(prior_summary.get('hit_rate', 0.0) or 0.0)) * 100:+.1f} pts",
+    )
+    review_col3.metric(
+        "Units Per Pick",
+        f"{float(current_summary.get('units_per_pick', 0.0) or 0.0):+.2f}",
+        delta=f"{float(current_summary.get('units_per_pick', 0.0) or 0.0) - float(prior_summary.get('units_per_pick', 0.0) or 0.0):+.2f}",
+    )
+    review_col4.metric(
+        "Graded Picks",
+        f"{int(current_summary.get('picks', 0) or 0)}",
+        delta=f"{int(current_summary.get('picks', 0) or 0) - int(prior_summary.get('picks', 0) or 0):+d}",
+    )
+
+    context_col1, context_col2 = st.columns(2)
+    context_col1.caption(
+        f"{current_label} leader: {format_source_label(str(current_summary.get('top_source') or 'N/A'))}. "
+        f"Best market pocket: {prettify_market_label(str(current_summary.get('top_market') or 'N/A'))}."
+    )
+    context_col2.caption(
+        f"{prior_label} finished at {float(prior_summary.get('profit_units', 0.0) or 0.0):+.2f} units "
+        f"with a {float(prior_summary.get('hit_rate', 0.0) or 0.0) * 100:.1f}% hit rate."
+    )
+
+    insights = list(review.get("insights") or [])
+    if insights:
+        st.markdown("#### Weekly Takeaways")
+        for insight in insights:
+            st.write(f"- {insight}")
+
+    review_tab1, review_tab2 = st.tabs(["By Source", "By Market"])
+
+    with review_tab1:
+        source_breakdown = review.get("source_breakdown", pd.DataFrame())
+        if isinstance(source_breakdown, pd.DataFrame) and not source_breakdown.empty:
+            source_display = source_breakdown.copy()
+            source_display["source"] = source_display["source"].map(format_source_label)
+            source_display["hit_rate"] = (pd.to_numeric(source_display["hit_rate"], errors="coerce") * 100).round(1)
+            source_display["profit_units"] = pd.to_numeric(source_display["profit_units"], errors="coerce").round(2)
+            source_display["units_per_pick"] = pd.to_numeric(source_display["units_per_pick"], errors="coerce").round(2)
+            source_display = source_display.rename(
+                columns={
+                    "source": "Workflow Source",
+                    "picks": "Tracked Picks",
+                    "hit_rate": "Hit Rate %",
+                    "profit_units": "Profit Units",
+                    "units_per_pick": "Units Per Pick",
+                }
+            )
+            st.dataframe(compact_numeric_table(source_display), use_container_width=True, hide_index=True)
+        else:
+            st.caption("No weekly source breakdown is available yet.")
+
+    with review_tab2:
+        market_breakdown = review.get("market_breakdown", pd.DataFrame())
+        if isinstance(market_breakdown, pd.DataFrame) and not market_breakdown.empty:
+            market_display = market_breakdown.copy()
+            market_display["market"] = market_display["market"].map(prettify_market_label)
+            market_display["hit_rate"] = (pd.to_numeric(market_display["hit_rate"], errors="coerce") * 100).round(1)
+            market_display["profit_units"] = pd.to_numeric(market_display["profit_units"], errors="coerce").round(2)
+            market_display["units_per_pick"] = pd.to_numeric(market_display["units_per_pick"], errors="coerce").round(2)
+            market_display = market_display.rename(
+                columns={
+                    "market": "Market",
+                    "picks": "Tracked Picks",
+                    "hit_rate": "Hit Rate %",
+                    "profit_units": "Profit Units",
+                    "units_per_pick": "Units Per Pick",
+                }
+            )
+            st.dataframe(compact_numeric_table(market_display.head(12)), use_container_width=True, hide_index=True)
+        else:
+            st.caption("No weekly market breakdown is available yet.")
 
 
 def render_smart_parlay_profile_panel(
@@ -4014,6 +4118,33 @@ with tab5:
                 rolling_chart.columns = [format_source_label(str(col)) for col in rolling_chart.columns]
                 st.line_chart(rolling_chart)
                 st.caption("Rolling hit rate uses the last 10 graded picks for each source.")
+
+    weekly_review = build_weekly_model_review(graded_df)
+    render_weekly_model_review(weekly_review)
+    weekly_review_json = json.dumps(
+        {
+            "generated_at_utc": pd.Timestamp.utcnow().isoformat(),
+            "sport_label": sport_label,
+            "weekly_review": {
+                **weekly_review,
+                "source_breakdown": weekly_review.get("source_breakdown", pd.DataFrame()).to_dict(orient="records")
+                if isinstance(weekly_review.get("source_breakdown"), pd.DataFrame)
+                else weekly_review.get("source_breakdown"),
+                "market_breakdown": weekly_review.get("market_breakdown", pd.DataFrame()).to_dict(orient="records")
+                if isinstance(weekly_review.get("market_breakdown"), pd.DataFrame)
+                else weekly_review.get("market_breakdown"),
+            },
+        },
+        indent=2,
+        default=str,
+    )
+    st.download_button(
+        "Download Weekly Review JSON",
+        data=weekly_review_json,
+        file_name=f"{sport_label.lower()}_weekly_model_review.json",
+        mime="application/json",
+        use_container_width=True,
+    )
 
     if auto_settle_payload:
         recorded_at = str(auto_settle_payload.get("recorded_at") or "")
