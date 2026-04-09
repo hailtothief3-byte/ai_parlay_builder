@@ -1961,49 +1961,47 @@ def render_recommendation_cards(cards: list[dict[str, str]], title: str, key_pre
         confidence_text = str(card.get("confidence") or "").strip()
         confidence_markup = ""
         if confidence_text:
-            confidence_markup = f"""
-                <div style="
-                    padding:0.22rem 0.7rem;
-                    border-radius:999px;
-                    border:1px solid {theme['card_border']};
-                    color:{theme['section_subtitle']};
-                    font-size:0.78rem;
-                    font-weight:700;
-                    letter-spacing:0.03em;
-                    text-transform:uppercase;
-                ">{confidence_text}</div>
-            """
-        st.markdown(
-            f"""
-            <div style="
-                background: {theme['card_bg']};
-                border: 1px solid {theme['card_border']};
-                border-radius: 20px;
-                padding: 1rem 1.1rem;
-                margin: 0 0 0.8rem;
-                box-shadow: 0 10px 24px rgba(8, 15, 28, 0.08);
-            ">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
-                    <div style="font-size:1.02rem;font-weight:700;color:{theme['heading_text']};">{card.get('title', '')}</div>
-                    <div style="
-                        padding:0.22rem 0.7rem;
-                        border-radius:999px;
-                        border:1px solid {theme['card_border']};
-                        color:{theme['section_subtitle']};
-                        font-size:0.78rem;
-                        font-weight:700;
-                        letter-spacing:0.03em;
-                        text-transform:uppercase;
-                    ">{card.get('status', '')}</div>
-                </div>
-                {confidence_markup}
-                <div style="margin-top:0.55rem;color:{theme['body_text']};line-height:1.5;">
-                    {card.get('body', '')}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+            confidence_markup = (
+                f'<div style="'
+                f'padding:0.22rem 0.7rem;'
+                f'border-radius:999px;'
+                f'border:1px solid {theme["card_border"]};'
+                f'color:{theme["section_subtitle"]};'
+                f'font-size:0.78rem;'
+                f'font-weight:700;'
+                f'letter-spacing:0.03em;'
+                f'text-transform:uppercase;'
+                f'margin-top:0.55rem;'
+                f'display:inline-block;'
+                f'">{confidence_text}</div>'
+            )
+        card_markup = (
+            f'<div style="'
+            f'background:{theme["card_bg"]};'
+            f'border:1px solid {theme["card_border"]};'
+            f'border-radius:20px;'
+            f'padding:1rem 1.1rem;'
+            f'margin:0 0 0.8rem;'
+            f'box-shadow:0 10px 24px rgba(8, 15, 28, 0.08);'
+            f'">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">'
+            f'<div style="font-size:1.02rem;font-weight:700;color:{theme["heading_text"]};">{card.get("title", "")}</div>'
+            f'<div style="'
+            f'padding:0.22rem 0.7rem;'
+            f'border-radius:999px;'
+            f'border:1px solid {theme["card_border"]};'
+            f'color:{theme["section_subtitle"]};'
+            f'font-size:0.78rem;'
+            f'font-weight:700;'
+            f'letter-spacing:0.03em;'
+            f'text-transform:uppercase;'
+            f'">{card.get("status", "")}</div>'
+            f'</div>'
+            f'{confidence_markup}'
+            f'<div style="margin-top:0.55rem;color:{theme["body_text"]};line-height:1.5;">{card.get("body", "")}</div>'
+            f'</div>'
         )
+        st.markdown(card_markup, unsafe_allow_html=True)
         action_label = str(card.get("action_label") or "").strip()
         if action_label:
             if st.button(action_label, key=f"{key_prefix}_{idx}", use_container_width=True):
