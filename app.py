@@ -19,7 +19,41 @@ from services.dfs_slip_service import (
     get_dfs_slip_adapters,
     recommend_dfs_slip_adapter,
 )
-from services.analytics import build_calibration_summary, build_clv_backtest, build_coach_mode_summary, build_experiment_snapshot, build_model_recommendation_cards, build_monthly_model_review, build_review_action_checklist, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary, build_weekly_model_review
+from services.analytics import build_calibration_summary, build_clv_backtest, build_experiment_snapshot, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary
+try:
+    from services.analytics import build_coach_mode_summary, build_model_recommendation_cards, build_monthly_model_review, build_review_action_checklist, build_weekly_model_review
+except ImportError:
+    def build_weekly_model_review(graded_df: pd.DataFrame) -> dict[str, object]:
+        return {
+            "current_window_label": "Last 7 days",
+            "prior_window_label": "Prior 7 days",
+            "current_summary": {},
+            "prior_summary": {},
+            "source_breakdown": pd.DataFrame(),
+            "market_breakdown": pd.DataFrame(),
+            "insights": [],
+        }
+
+    def build_monthly_model_review(graded_df: pd.DataFrame) -> dict[str, object]:
+        return {
+            "current_window_label": "Last 30 days",
+            "prior_window_label": "Prior 30 days",
+            "current_summary": {},
+            "prior_summary": {},
+            "source_breakdown": pd.DataFrame(),
+            "market_breakdown": pd.DataFrame(),
+            "insights": [],
+        }
+
+    def build_model_recommendation_cards(weekly_review: dict[str, object], monthly_review: dict[str, object], sport_label: str = "") -> list[dict[str, str]]:
+        return []
+
+    def build_coach_mode_summary(weekly_review: dict[str, object], monthly_review: dict[str, object], sport_label: str = "") -> str:
+        sport_text = f" for {sport_label}" if str(sport_label).strip() else ""
+        return f"Coach Mode: weekly and monthly review helpers are still loading{sport_text}, so the app is using its standard workflow posture for now."
+
+    def build_review_action_checklist(weekly_review: dict[str, object], monthly_review: dict[str, object]) -> list[dict[str, object]]:
+        return []
 from services.board_service import get_latest_board
 from services.bankroll_service import annotate_stake_recommendations, recommend_parlay_stake
 from services.bankroll_journal_service import add_journal_entry, build_bankroll_kpis, build_bankroll_summary, get_journal_entries, settle_journal_entry, sync_ticket_journal_entries
