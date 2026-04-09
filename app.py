@@ -523,6 +523,69 @@ def format_pending_result_value(value, pending_label: str) -> str:
     return value_text
 
 
+def render_top_priority_strip(operating_mode: dict[str, str], priority_cards: list[dict[str, str]]) -> None:
+    top_cards = priority_cards[:2]
+    cards_markup: list[str] = []
+    for card in top_cards:
+        cards_markup.append(
+            f"""
+            <div class="priority-strip__card">
+                <div class="priority-strip__eyebrow">{card.get('status', 'priority')}</div>
+                <div class="priority-strip__title">{card.get('title', '')}</div>
+                <div class="priority-strip__body">{card.get('body', '')}</div>
+            </div>
+            """
+        )
+    st.markdown(
+        f"""
+        <div class="priority-strip">
+            <div class="priority-strip__mode">
+                <div class="priority-strip__eyebrow">Today's priorities</div>
+                <div class="priority-strip__mode-title">{operating_mode.get('title', '')}</div>
+                <div class="priority-strip__body">{operating_mode.get('body', '')}</div>
+            </div>
+            <div class="priority-strip__cards">
+                {''.join(cards_markup)}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    default_target_map = {
+        "Edge Scanner": "edge_scanner",
+        "Parlay Lab": "parlay_lab",
+        "Results & Grading": "results_grading",
+        "Backtest": "backtest",
+        "Live Board": "live_board",
+    }
+    action_col1, action_col2, action_col3 = st.columns(3)
+    if action_col1.button(
+        f"Focus {operating_mode.get('default_workflow', 'Overview')}",
+        key="top_priority_focus_mode",
+        use_container_width=True,
+    ):
+        target = default_target_map.get(str(operating_mode.get("default_workflow") or ""), "overview")
+        set_dashboard_focus(target)
+        if target == "results_grading":
+            set_results_grading_focus("saved_tickets")
+        st.rerun()
+    if top_cards:
+        first_card = top_cards[0]
+        first_label = str(first_card.get("action_label") or "Use Top Priority")
+        if action_col2.button(first_label, key="top_priority_card_one", use_container_width=True):
+            handle_recommendation_card_action(first_card)
+    else:
+        action_col2.empty()
+    if len(top_cards) > 1:
+        second_card = top_cards[1]
+        second_label = str(second_card.get("action_label") or "Use Next Priority")
+        if action_col3.button(second_label, key="top_priority_card_two", use_container_width=True):
+            handle_recommendation_card_action(second_card)
+    else:
+        action_col3.empty()
+
+
 def build_overview_next_step_cards(
     overview_board: pd.DataFrame,
     overview_edges: pd.DataFrame,
@@ -2315,6 +2378,52 @@ header[data-testid="stHeader"] [role="button"]:hover,
     border: 1px solid __HERO_PILL_BORDER__;
     font-size: 0.84rem;
 }
+.priority-strip {
+    display: grid;
+    grid-template-columns: minmax(260px, 1.15fr) minmax(0, 1.85fr);
+    gap: 0.9rem;
+    margin: 0.15rem 0 1rem;
+}
+.priority-strip__mode,
+.priority-strip__card {
+    background: __CARD_BG__;
+    border: 1px solid __CARD_BORDER__;
+    border-radius: 20px;
+    padding: 1rem 1.05rem;
+    box-shadow: 0 10px 24px rgba(8, 15, 28, 0.08);
+}
+.priority-strip__cards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+.priority-strip__eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: __EYEBROW__;
+    margin-bottom: 0.38rem;
+}
+.priority-strip__mode-title,
+.priority-strip__title {
+    color: __HEADING_TEXT__;
+    font-weight: 800;
+    line-height: 1.2;
+}
+.priority-strip__mode-title {
+    font-size: 1.02rem;
+    margin-bottom: 0.42rem;
+}
+.priority-strip__title {
+    font-size: 0.98rem;
+    margin-bottom: 0.35rem;
+}
+.priority-strip__body {
+    color: __BODY_TEXT__;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
 .section-header {
     margin: 0.1rem 0 0.9rem;
 }
@@ -2430,6 +2539,12 @@ header[data-testid="stHeader"] [role="button"]:hover,
     }
 }
 @media (max-width: 860px) {
+    .priority-strip {
+        grid-template-columns: 1fr;
+    }
+    .priority-strip__cards {
+        grid-template-columns: 1fr;
+    }
     [data-testid="stMetricValue"] {
         font-size: clamp(1.45rem, 4.6vw, 2.1rem);
     }
@@ -2459,6 +2574,10 @@ header[data-testid="stHeader"] [role="button"]:hover,
     }
 }
 @media (max-width: 640px) {
+    .priority-strip__mode,
+    .priority-strip__card {
+        padding: 0.9rem 0.95rem;
+    }
     .stTabs [data-baseweb="tab"] {
         flex: 1 1 100%;
     }
@@ -2726,6 +2845,42 @@ sync_view_preference_state(sport_label, demo_style_session_key, "demo_parlay_sty
 sync_bool_view_preference_state(sport_label, demo_same_team_session_key, "demo_same_team", False)
 smart_parlay_profiles = build_smart_parlay_profiles(get_ticket_summary_with_grades(sport_label))
 render_shell_header(sport_label, sport_provider, board_type, sync_enabled, last_sync)
+top_priority_board = get_latest_board(live_sport_keys, is_dfs=is_dfs) if live_sport_keys else pd.DataFrame()
+top_priority_edges = scan_edges(sport_key=live_sport_keys, is_dfs=is_dfs) if live_sport_keys else pd.DataFrame()
+top_priority_edges = apply_market_coverage(top_priority_edges, market_coverage_map) if not top_priority_edges.empty else top_priority_edges
+top_priority_watchlist_alerts = get_watchlist_alerts(top_priority_edges, sport_label) if not top_priority_edges.empty else pd.DataFrame()
+top_priority_unresolved = get_unresolved_tracked_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
+top_priority_graded = get_graded_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
+top_priority_tickets = get_ticket_summary_with_grades(sport_label)
+top_priority_journal = get_journal_entries(sport_label)
+top_priority_weekly_review = build_weekly_model_review(top_priority_graded)
+top_priority_monthly_review = build_monthly_model_review(top_priority_graded)
+top_priority_source_summary = build_true_source_summary(top_priority_graded)
+top_priority_operating_mode = build_overview_operating_mode(
+    source_summary_df=top_priority_source_summary,
+    weekly_review=top_priority_weekly_review,
+    monthly_review=top_priority_monthly_review,
+    sport_label=sport_label,
+    is_dfs=is_dfs,
+    overview_watchlist_alerts=top_priority_watchlist_alerts,
+    overview_unresolved_tracked=top_priority_unresolved,
+    overview_edges=top_priority_edges,
+)
+top_priority_cards = build_overview_next_step_cards(
+    overview_board=top_priority_board,
+    overview_edges=top_priority_edges,
+    overview_watchlist_alerts=top_priority_watchlist_alerts,
+    overview_tickets=top_priority_tickets,
+    overview_unresolved_tracked=top_priority_unresolved,
+    overview_graded=top_priority_graded,
+    overview_journal=top_priority_journal,
+    source_summary_df=top_priority_source_summary,
+    weekly_review=top_priority_weekly_review,
+    monthly_review=top_priority_monthly_review,
+    sport_label=sport_label,
+    is_dfs=is_dfs,
+)
+render_top_priority_strip(top_priority_operating_mode, top_priority_cards)
 if not sync_enabled:
     st.info("This sport is routed through the esports provider slot. Demo/live-seeded views work now; external esports API integration is the next step.")
 
