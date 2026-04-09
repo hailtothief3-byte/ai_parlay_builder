@@ -3100,12 +3100,21 @@ with tab3:
                         notes=live_ticket_notes or None,
                         metadata=(
                             {
+                                "candidate_pool": parlay_candidate_pool,
+                                "min_confidence": int(min_confidence),
+                                "allow_same_player": bool(allow_same_player),
+                                "smart_profile_mode": str(parlay_df.get("smart_profile_mode", pd.Series([""])).iloc[0]) if "smart_profile_mode" in parlay_df.columns and not parlay_df.empty else "",
                                 "dfs_target_key": selected_live_dfs_adapter["key"],
                                 "dfs_target_label": selected_live_dfs_adapter["label"],
                                 "dfs_target_url": selected_live_dfs_adapter["launch_url"],
                             }
                             if is_dfs and selected_live_dfs_adapter
-                            else None
+                            else {
+                                "candidate_pool": parlay_candidate_pool,
+                                "min_confidence": int(min_confidence),
+                                "allow_same_player": bool(allow_same_player),
+                                "smart_profile_mode": str(parlay_df.get("smart_profile_mode", pd.Series([""])).iloc[0]) if "smart_profile_mode" in parlay_df.columns and not parlay_df.empty else "",
+                            }
                         ),
                     )
                     if ticket_id:
@@ -3303,12 +3312,19 @@ with tab3:
                     notes=demo_ticket_notes or None,
                     metadata=(
                         {
+                            "style": style,
+                            "min_confidence": int(min_confidence),
+                            "allow_same_team": bool(allow_same_team),
                             "dfs_target_key": selected_demo_dfs_adapter["key"],
                             "dfs_target_label": selected_demo_dfs_adapter["label"],
                             "dfs_target_url": selected_demo_dfs_adapter["launch_url"],
                         }
                         if is_dfs and selected_demo_dfs_adapter
-                        else None
+                        else {
+                            "style": style,
+                            "min_confidence": int(min_confidence),
+                            "allow_same_team": bool(allow_same_team),
+                        }
                     ),
                 )
                 if ticket_id:

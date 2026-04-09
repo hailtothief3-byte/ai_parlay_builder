@@ -112,8 +112,8 @@ def get_saved_tickets(sport_label: str | None = None) -> pd.DataFrame:
 
     return pd.DataFrame(
         [
-            {
-                **{
+            (
+                lambda note_text, metadata: {
                     "ticket_id": row.id,
                     "name": row.name,
                     "sport_label": row.sport_label,
@@ -122,17 +122,19 @@ def get_saved_tickets(sport_label: str | None = None) -> pd.DataFrame:
                     "avg_confidence": row.avg_confidence,
                     "avg_model_prob": row.avg_model_prob,
                     "status": row.status,
-                    "notes": unpack_ticket_notes(row.notes)[0],
-                    "ticket_metadata": unpack_ticket_notes(row.notes)[1],
+                    "notes": note_text,
+                    "ticket_metadata": metadata,
                     "created_at": row.created_at,
-                },
-                **(
-                    {
-                        "dfs_target_app": str(unpack_ticket_notes(row.notes)[1].get("dfs_target_label") or ""),
-                        "dfs_target_key": str(unpack_ticket_notes(row.notes)[1].get("dfs_target_key") or ""),
-                    }
-                ),
-            }
+                    "dfs_target_app": str(metadata.get("dfs_target_label") or ""),
+                    "dfs_target_key": str(metadata.get("dfs_target_key") or ""),
+                    "build_candidate_pool": str(metadata.get("candidate_pool") or ""),
+                    "build_style": str(metadata.get("style") or ""),
+                    "build_min_confidence": metadata.get("min_confidence"),
+                    "build_allow_same_player": bool(metadata.get("allow_same_player", False)),
+                    "build_allow_same_team": bool(metadata.get("allow_same_team", False)),
+                    "build_smart_profile_mode": str(metadata.get("smart_profile_mode") or ""),
+                }
+            )(*unpack_ticket_notes(row.notes))
             for row in rows
         ]
     ).sort_values("created_at", ascending=False)

@@ -62,6 +62,7 @@ def _resolve_live_profile(ticket_summary_df: pd.DataFrame) -> dict[str, object]:
             "reason": "Live tickets have been saved, but not enough of them are settled yet. Leaning on your recent ticket-building tendencies for now.",
         }
 
+    live_leg_source = "build_min_confidence" if "build_min_confidence" in resolved_live.columns else "avg_confidence"
     leg_summary = (
         resolved_live.groupby("leg_count", observed=False)
         .agg(sample_size=("ticket_id", "count"), avg_score=("status_score", "mean"))
@@ -72,14 +73,22 @@ def _resolve_live_profile(ticket_summary_df: pd.DataFrame) -> dict[str, object]:
 
     best_leg_tickets = resolved_live[resolved_live["leg_count"] == recommended_legs].copy()
     recommended_min_confidence = _round_confidence(
-        best_leg_tickets["avg_confidence"].median() if "avg_confidence" in best_leg_tickets.columns and not best_leg_tickets["avg_confidence"].dropna().empty else resolved_live["avg_confidence"].median(),
+        best_leg_tickets[live_leg_source].median() if live_leg_source in best_leg_tickets.columns and not best_leg_tickets[live_leg_source].dropna().empty else resolved_live.get(live_leg_source, resolved_live.get("avg_confidence", pd.Series(dtype=float))).median(),
         65,
     )
-
-    same_player_flags = []
-    for ticket_id in resolved_live["ticket_id"].tolist():
-        same_player_flags.append({"ticket_id": int(ticket_id), "has_same_player": _ticket_has_same_player(int(ticket_id))})
-    same_player_df = pd.DataFrame(same_player_flags)
+    same_player_df = pd.DataFrame(
+        [
+            {
+                "ticket_id": int(ticket_id),
+                "has_same_player": (
+                    bool(ticket_row.get("build_allow_same_player", False))
+                    if "build_allow_same_player" in resolved_live.columns and pd.notna(ticket_row.get("build_allow_same_player"))
+                    else _ticket_has_same_player(int(ticket_id))
+                ),
+            }
+            for ticket_id, ticket_row in resolved_live.set_index("ticket_id").iterrows()
+        ]
+    )
     duplicate_penalty = False
     if not same_player_df.empty:
         duplicate_merged = resolved_live.merge(same_player_df, on="ticket_id", how="left")
@@ -129,7 +138,7 @@ def _resolve_demo_profile(ticket_summary_df: pd.DataFrame) -> dict[str, object]:
         }
 
     demo_tickets["inferred_style"] = demo_tickets.apply(
-        lambda row: _infer_demo_style(row.get("leg_count"), row.get("avg_confidence")),
+        lambda row: str(row.get("build_style") or "").strip() or _infer_demo_style(row.get("leg_count"), row.get("avg_confidence")),
         axis=1,
     )
     style_summary = (
@@ -140,16 +149,22 @@ def _resolve_demo_profile(ticket_summary_df: pd.DataFrame) -> dict[str, object]:
     )
     recommended_style = str(style_summary.iloc[0]["inferred_style"]) if not style_summary.empty else "Balanced"
     recommended_legs = int(round(float(style_summary.iloc[0]["avg_legs"]))) if not style_summary.empty and pd.notna(style_summary.iloc[0]["avg_legs"]) else 3
-    recommended_min_confidence = _round_confidence(
-        float(style_summary.iloc[0]["avg_confidence"]) if not style_summary.empty and pd.notna(style_summary.iloc[0]["avg_confidence"]) else None,
-        70,
+    preferred_style_tickets = demo_tickets[demo_tickets["inferred_style"] == recommended_style].copy()
+    preferred_conf_series = (
+        preferred_style_tickets["build_min_confidence"]
+        if "build_min_confidence" in preferred_style_tickets.columns and not preferred_style_tickets["build_min_confidence"].dropna().empty
+        else preferred_style_tickets.get("avg_confidence", pd.Series(dtype=float))
     )
+    recommended_min_confidence = _round_confidence(preferred_conf_series.median() if not preferred_conf_series.empty else None, 70)
+    same_team_allowed = False
+    if "build_allow_same_team" in preferred_style_tickets.columns and not preferred_style_tickets["build_allow_same_team"].dropna().empty:
+        same_team_allowed = bool(preferred_style_tickets["build_allow_same_team"].mode().iloc[0])
     return {
         "sample_size": int(len(demo_tickets)),
         "recommended_legs": max(2, min(6, recommended_legs)),
         "recommended_min_confidence": recommended_min_confidence,
         "recommended_style": recommended_style,
-        "recommended_same_team": False,
+        "recommended_same_team": same_team_allowed,
         "reason": (
             f"Your saved demo builds most often resemble a {recommended_style.lower()} profile, centered around "
             f"{recommended_legs} legs and roughly {recommended_min_confidence} confidence. "
