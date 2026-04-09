@@ -1263,6 +1263,31 @@ def active_smart_tracking_source() -> str:
     return "smart_pick_engine_manual" if manual_smart_weight_overrides else "smart_pick_engine_auto"
 
 
+def build_override_recommendation(source_summary_df: pd.DataFrame) -> tuple[str, str]:
+    if source_summary_df.empty:
+        return ("Not enough data yet", "Keep collecting graded smart picks before switching modes. The app needs settled results to recommend whether manual overrides are helping.")
+
+    auto_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_auto"].head(1)
+    manual_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_manual"].head(1)
+    if auto_row.empty or manual_row.empty:
+        return ("Need both lanes", "Track and grade picks under both auto and manual smart modes so the app can recommend whether to stay manual or switch back to auto.")
+
+    auto_row = auto_row.iloc[0]
+    manual_row = manual_row.iloc[0]
+    auto_picks = int(auto_row.get("picks", 0) or 0)
+    manual_picks = int(manual_row.get("picks", 0) or 0)
+    if auto_picks < 8 or manual_picks < 8:
+        return ("Keep testing", f"Auto has {auto_picks} graded picks and manual has {manual_picks}. Let both modes build a larger sample before making a strong call.")
+
+    hit_lift = float(manual_row.get("hit_rate", 0.0) or 0.0) - float(auto_row.get("hit_rate", 0.0) or 0.0)
+    roi_lift = float(manual_row.get("roi_per_pick", 0.0) or 0.0) - float(auto_row.get("roi_per_pick", 0.0) or 0.0)
+    if roi_lift < -0.08 and hit_lift <= 0:
+        return ("Switch back to auto", f"Manual overrides are underperforming auto by {roi_lift:+.2f} units per pick and {hit_lift * 100:+.1f} hit-rate points across a usable sample.")
+    if roi_lift > 0.08 or hit_lift > 0.04:
+        return ("Stay manual", f"Manual overrides are ahead by {roi_lift:+.2f} units per pick and {hit_lift * 100:+.1f} hit-rate points across the current sample.")
+    return ("Too close to call", f"Manual and auto are performing similarly right now: {roi_lift:+.2f} units per pick and {hit_lift * 100:+.1f} hit-rate points apart.")
+
+
 def render_smart_parlay_profile_panel(
     profile: dict[str, object],
     title: str,
@@ -3693,6 +3718,8 @@ with tab5:
             compare_override_col2.metric("Auto confidence", f"{float(auto_weight_profile['confidence_score_weight']):.2f}")
             compare_override_col3.metric("Auto edge", f"{float(auto_weight_profile['edge_multiplier']):.2f}")
             compare_override_col4.metric("Auto market history", f"{float(auto_weight_profile['history_market_weight']):.2f}")
+            st.markdown("**Override Recommendation**")
+            st.caption(f"{override_recommendation_title}: {override_recommendation_body}")
             if override_enabled:
                 st.info(
                     "Manual overrides are active. Overview, Edge Scanner, and Parlay Lab will all use your custom smart-engine mix until you turn this off."
@@ -3771,6 +3798,7 @@ with tab5:
 
     st.markdown("### Source Performance")
     source_summary_df = build_true_source_summary(graded_df)
+    override_recommendation_title, override_recommendation_body = build_override_recommendation(source_summary_df)
     if source_summary_df.empty:
         render_empty_state(
             "No source comparison yet",
@@ -3849,6 +3877,42 @@ with tab5:
                 f"{int(manual_row['picks'])} vs {int(auto_row['picks'])}",
             )
             st.caption("Use this section to compare whether your manual smart-engine mix is actually outperforming the auto-tuned profile.")
+
+        experiment_log = graded_df[graded_df["source"].isin(["smart_pick_engine_auto", "smart_pick_engine_manual", "edge_scanner"])].copy() if "source" in graded_df.columns else pd.DataFrame()
+        if not experiment_log.empty:
+            st.markdown("#### Experiment Log")
+            experiment_log = prefer_player_display(annotate_player_display(experiment_log.copy()))
+            experiment_log["source"] = experiment_log["source"].map(format_source_label)
+            if {"pick", "line"}.intersection(experiment_log.columns):
+                experiment_log["bet"] = experiment_log.apply(format_bet_label, axis=1)
+            experiment_log["summary"] = experiment_log.apply(
+                lambda row: " | ".join(
+                    part
+                    for part in [
+                        str(row.get("source", "")).strip(),
+                        str(row.get("player", "")).strip(),
+                        str(row.get("bet", "")).strip(),
+                    ]
+                    if part and part.lower() != "nan"
+                ),
+                axis=1,
+            )
+            if "model_prob" in experiment_log.columns:
+                experiment_log["model_prob"] = (pd.to_numeric(experiment_log["model_prob"], errors="coerce") * 100).round(1)
+            if "edge" in experiment_log.columns:
+                experiment_log["edge"] = (pd.to_numeric(experiment_log["edge"], errors="coerce") * 100).round(1)
+            if "profit_units" in experiment_log.columns:
+                experiment_log["profit_units"] = pd.to_numeric(experiment_log["profit_units"], errors="coerce").round(2)
+            experiment_log_columns = [
+                col
+                for col in ["resolved_at", "summary", "grade", "profit_units", "model_prob", "edge", "confidence"]
+                if col in experiment_log.columns
+            ]
+            st.dataframe(
+                compact_numeric_table(experiment_log[experiment_log_columns].sort_values("resolved_at", ascending=False).head(40)),
+                use_container_width=True,
+                hide_index=True,
+            )
 
         cumulative_source_profit, rolling_source_hit_rate = build_true_source_timeseries(graded_df)
         trend_tab1, trend_tab2 = st.tabs(["Cumulative Units", "Rolling Hit Rate"])
@@ -4248,6 +4312,8 @@ with tab5:
                 "build_style",
                 "build_min_confidence",
                 "build_smart_profile_mode",
+                "ticket_outcome_score",
+                "resolved_ratio",
                 "resolved_legs",
                 "won_legs",
                 "push_legs",
@@ -4258,6 +4324,10 @@ with tab5:
         ].copy()
         display_tickets["avg_confidence"] = display_tickets["avg_confidence"].round(1)
         display_tickets["avg_model_prob"] = (display_tickets["avg_model_prob"] * 100).round(2)
+        if "ticket_outcome_score" in display_tickets.columns:
+            display_tickets["ticket_outcome_score"] = pd.to_numeric(display_tickets["ticket_outcome_score"], errors="coerce").round(2)
+        if "resolved_ratio" in display_tickets.columns:
+            display_tickets["resolved_ratio"] = (pd.to_numeric(display_tickets["resolved_ratio"], errors="coerce") * 100).round(1)
         if "source" in display_tickets.columns:
             display_tickets["source"] = display_tickets["source"].map(format_source_label)
         if "build_smart_profile_mode" in display_tickets.columns:
@@ -4306,6 +4376,15 @@ with tab5:
             snapshot_col6.metric("Avg model %", f"{float(ticket_row['avg_model_prob']) * 100:.2f}%" if pd.notna(ticket_row["avg_model_prob"]) else "N/A")
             snapshot_col7.metric("Resolved legs", str(ticket_row["resolved_legs"]))
             snapshot_col8.metric("Open legs", str(ticket_row["open_legs"]))
+            outcome_col1, outcome_col2 = st.columns(2)
+            outcome_col1.metric(
+                "Ticket outcome score",
+                f"{float(ticket_row['ticket_outcome_score']):.2f}" if pd.notna(ticket_row.get("ticket_outcome_score")) else "N/A",
+            )
+            outcome_col2.metric(
+                "Resolved %",
+                f"{float(ticket_row['resolved_ratio']) * 100:.1f}%" if pd.notna(ticket_row.get("resolved_ratio")) else "N/A",
+            )
             build_col1, build_col2, build_col3, build_col4 = st.columns(4)
             build_col1.metric("Candidate pool", str(ticket_row.get("build_candidate_pool") or "N/A"))
             build_col2.metric("Build style", str(ticket_row.get("build_style") or "N/A"))

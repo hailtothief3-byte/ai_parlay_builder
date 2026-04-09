@@ -276,6 +276,13 @@ def get_ticket_summary_with_grades(sport_label: str | None = None) -> pd.DataFra
             if won_legs == 0 and push_legs == len(legs):
                 ticket_status = "push"
 
+        ticket_outcome_score = None
+        resolved_ratio = None
+        if len(legs) > 0:
+            resolved_ratio = resolved_legs / len(legs)
+        if open_legs == 0 and len(legs) > 0:
+            ticket_outcome_score = (won_legs + (push_legs * 0.5)) / len(legs)
+
         graded_rows.append(
             {
                 **ticket.to_dict(),
@@ -283,6 +290,8 @@ def get_ticket_summary_with_grades(sport_label: str | None = None) -> pd.DataFra
                 "won_legs": won_legs,
                 "push_legs": push_legs,
                 "open_legs": open_legs,
+                "resolved_ratio": resolved_ratio,
+                "ticket_outcome_score": ticket_outcome_score,
                 "ticket_status_live": ticket_status,
             }
         )
