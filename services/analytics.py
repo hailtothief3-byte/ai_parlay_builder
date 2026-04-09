@@ -668,3 +668,87 @@ def build_ticket_benchmark_summary(graded_picks_df: pd.DataFrame, leg_count: int
         "benchmark_hit_rate": float(benchmark["won"].mean()) if "won" in benchmark.columns else None,
         "benchmark_profit_units": float(benchmark["profit_units"].sum()) if "profit_units" in benchmark.columns else None,
     }
+
+
+def build_ticket_review_insights(
+    ticket_row: dict | pd.Series,
+    benchmark: dict[str, float | int | None],
+    overlap_count: int,
+    current_benchmark: pd.DataFrame,
+) -> list[dict[str, str]]:
+    insights: list[dict[str, str]] = []
+    leg_count = int(ticket_row.get("leg_count", 0) or 0)
+    if leg_count <= 0:
+        return insights
+
+    ticket_avg_confidence = ticket_row.get("avg_confidence")
+    benchmark_avg_confidence = benchmark.get("benchmark_avg_confidence")
+    ticket_avg_model_prob = ticket_row.get("avg_model_prob")
+    benchmark_avg_model_prob = benchmark.get("benchmark_avg_model_prob")
+    overlap_ratio = overlap_count / leg_count if leg_count > 0 else 0.0
+
+    if benchmark_avg_confidence is not None and ticket_avg_confidence is not None:
+        confidence_gap = float(ticket_avg_confidence) - float(benchmark_avg_confidence)
+        if confidence_gap >= 3:
+            insights.append(
+                {
+                    "title": "Ticket Beat The Usual Confidence Bar",
+                    "status": "Model Alignment",
+                    "body": f"This saved ticket is running {confidence_gap:.1f} confidence points above the benchmark average for the same leg count.",
+                }
+            )
+        elif confidence_gap <= -3:
+            insights.append(
+                {
+                    "title": "Ticket Was Below The Benchmark Confidence Zone",
+                    "status": "Model Drift",
+                    "body": f"This ticket came in {abs(confidence_gap):.1f} confidence points below the benchmark average for similar builds.",
+                }
+            )
+
+    if benchmark_avg_model_prob is not None and ticket_avg_model_prob is not None:
+        model_gap = (float(ticket_avg_model_prob) - float(benchmark_avg_model_prob)) * 100
+        if model_gap >= 2:
+            insights.append(
+                {
+                    "title": "Ticket Cleared The Model Probability Benchmark",
+                    "status": "Probability Edge",
+                    "body": f"The ticket's average model probability is {model_gap:.2f} points above the benchmark leg set.",
+                }
+            )
+        elif model_gap <= -2:
+            insights.append(
+                {
+                    "title": "Ticket Lagged The Model Probability Benchmark",
+                    "status": "Probability Gap",
+                    "body": f"The ticket's average model probability is {abs(model_gap):.2f} points below the benchmark leg set.",
+                }
+            )
+
+    if not current_benchmark.empty:
+        if overlap_ratio >= 0.67:
+            insights.append(
+                {
+                    "title": "Ticket Mostly Matched The Current Model",
+                    "status": "High Overlap",
+                    "body": f"{overlap_count} of {leg_count} legs still overlap with today's top model choices, so the saved ticket is staying close to the current ranking.",
+                }
+            )
+        elif overlap_ratio <= 0.34:
+            insights.append(
+                {
+                    "title": "Ticket Has Drifted From The Current Model",
+                    "status": "Low Overlap",
+                    "body": f"Only {overlap_count} of {leg_count} legs still overlap with today's top model choices, which suggests the board has moved or the model has shifted.",
+                }
+            )
+
+    if not insights:
+        insights.append(
+            {
+                "title": "Ticket And Model Are In The Same Neighborhood",
+                "status": "Neutral Read",
+                "body": "This saved ticket is neither clearly stronger nor clearly weaker than the current benchmark view yet.",
+            }
+        )
+    return insights[:3]

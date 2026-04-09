@@ -19,7 +19,7 @@ from services.dfs_slip_service import (
     get_dfs_slip_adapters,
     recommend_dfs_slip_adapter,
 )
-from services.analytics import build_calibration_summary, build_clv_backtest, build_experiment_snapshot, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary
+from services.analytics import build_calibration_summary, build_clv_backtest, build_experiment_snapshot, build_ticket_benchmark_summary, build_ticket_review_insights, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary
 try:
     from services.analytics import build_coach_mode_summary, build_model_recommendation_cards, build_monthly_model_review, build_review_action_checklist, build_weekly_model_review
 except ImportError:
@@ -3917,6 +3917,15 @@ with tab5:
             """,
             unsafe_allow_html=True,
         )
+
+
+def format_metric_or_na(value, formatter) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "N/A"
+    try:
+        return formatter(value)
+    except Exception:
+        return "N/A"
         if row.get("ActionLabel"):
             if status_cols[idx].button(row["ActionLabel"], key=f"results_status_action_{idx}", use_container_width=True):
                 set_dashboard_focus(str(row["ActionTarget"]))
@@ -4919,21 +4928,23 @@ with tab5:
                         overlap_count = len(ticket_keys.intersection(benchmark_keys))
 
                     comparison_col1, comparison_col2, comparison_col3, comparison_col4 = st.columns(4)
-                    comparison_col1.metric("Ticket Avg Confidence", f"{float(ticket_row['avg_confidence'] or 0):.1f}")
-                    comparison_col2.metric("Ticket Avg Model Prob", f"{float((ticket_row['avg_model_prob'] or 0) * 100):.2f}%")
-                    comparison_col3.metric("Benchmark Avg Confidence", f"{float(benchmark['benchmark_avg_confidence'] or 0):.1f}")
+                    comparison_col1.metric("Ticket Avg Confidence", format_metric_or_na(ticket_row.get("avg_confidence"), lambda value: f"{float(value):.1f}"))
+                    comparison_col2.metric("Ticket Avg Model Prob", format_metric_or_na(ticket_row.get("avg_model_prob"), lambda value: f"{float(value) * 100:.2f}%"))
+                    comparison_col3.metric("Benchmark Avg Confidence", format_metric_or_na(benchmark.get("benchmark_avg_confidence"), lambda value: f"{float(value):.1f}"))
                     comparison_col4.metric("Current Top-Leg Overlap", f"{overlap_count}/{int(ticket_row['leg_count'])}")
 
                     comparison_col5, comparison_col6, comparison_col7 = st.columns(3)
                     comparison_col5.metric(
                         "Benchmark Hit Rate",
-                        f"{float((benchmark['benchmark_hit_rate'] or 0) * 100):.2f}%" if benchmark["benchmark_hit_rate"] is not None else "N/A",
+                        format_metric_or_na(benchmark.get("benchmark_hit_rate"), lambda value: f"{float(value) * 100:.2f}%"),
                     )
                     comparison_col6.metric(
                         "Benchmark Profit Units",
-                        f"{float(benchmark['benchmark_profit_units'] or 0):.2f}" if benchmark["benchmark_profit_units"] is not None else "N/A",
+                        format_metric_or_na(benchmark.get("benchmark_profit_units"), lambda value: f"{float(value):.2f}"),
                     )
                     comparison_col7.metric("Ticket Status", str(ticket_row["ticket_status_live"]))
+                    ticket_review_cards = build_ticket_review_insights(ticket_row, benchmark, overlap_count, current_benchmark)
+                    render_recommendation_cards(ticket_review_cards, "Ticket Review Insights")
 
                     if not ticket_legs_with_results.empty:
                         st.markdown("##### Ticket Leg Outcomes")
