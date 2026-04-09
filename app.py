@@ -3502,10 +3502,19 @@ with tab5:
         )
     else:
         smart_summary_row = smart_learning_tables["summary"].iloc[0].to_dict() if not smart_learning_tables["summary"].empty else {}
+        smart_weight_row = smart_learning_tables["weight_profile"].iloc[0].to_dict() if not smart_learning_tables.get("weight_profile", pd.DataFrame()).empty else {}
         smart_metric_col1, smart_metric_col2, smart_metric_col3 = st.columns(3)
         smart_metric_col1.metric("History picks", f"{int(smart_summary_row.get('history_picks', 0) or 0)}")
         smart_metric_col2.metric("Historical hit rate", f"{float(smart_summary_row.get('overall_hit_rate', 0.0) or 0.0) * 100:.1f}%")
         smart_metric_col3.metric("Units per pick", f"{float(smart_summary_row.get('overall_roi_per_pick', 0.0) or 0.0):+.2f}")
+
+        tune_col1, tune_col2, tune_col3, tune_col4 = st.columns(4)
+        tune_col1.metric("Tuning mode", str(smart_weight_row.get("profile_mode", "default")).replace("_", " ").title())
+        tune_col2.metric("Model weight", f"{float(smart_weight_row.get('model_score_weight', 0.42) or 0.42):.2f}")
+        tune_col3.metric("History market weight", f"{float(smart_weight_row.get('history_market_weight', 0.36) or 0.36):.2f}")
+        tune_col4.metric("Edge multiplier", f"{float(smart_weight_row.get('edge_multiplier', 1.45) or 1.45):.2f}")
+        if smart_weight_row.get("profile_reason"):
+            st.caption(str(smart_weight_row["profile_reason"]))
 
         smart_tab1, smart_tab2, smart_tab3 = st.tabs(["Best Markets", "Best Sportsbooks", "Confidence Memory"])
 

@@ -6,6 +6,22 @@ import pandas as pd
 CONFIDENCE_BUCKET_BINS = [0, 60, 70, 80, 90, 100]
 CONFIDENCE_BUCKET_LABELS = ["0-60", "61-70", "71-80", "81-90", "91-100"]
 PRIOR_WEIGHT = 12.0
+DEFAULT_WEIGHT_PROFILE = {
+    "model_score_weight": 0.42,
+    "confidence_score_weight": 0.28,
+    "edge_multiplier": 1.45,
+    "books_multiplier": 0.85,
+    "line_delta_multiplier": 0.80,
+    "history_market_weight": 0.36,
+    "history_confidence_weight": 0.30,
+    "history_sportsbook_weight": 0.18,
+    "market_roi_multiplier": 10.0,
+    "sportsbook_roi_multiplier": 6.0,
+    "expected_model_weight": 0.58,
+    "expected_market_weight": 0.22,
+    "expected_confidence_weight": 0.14,
+    "expected_sportsbook_weight": 0.06,
+}
 
 
 def _empty_summary() -> dict[str, float | int]:
@@ -27,6 +43,13 @@ def _coerce_numeric(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
 
 def _clip(value: float, lower: float, upper: float) -> float:
     return max(lower, min(value, upper))
+
+
+def _safe_std(series: pd.Series) -> float:
+    numeric = pd.to_numeric(series, errors="coerce").dropna()
+    if len(numeric) <= 1:
+        return 0.0
+    return float(numeric.std())
 
 
 def _build_segment_summary(history: pd.DataFrame, group_cols: list[str], prefix: str) -> pd.DataFrame:
@@ -117,8 +140,68 @@ def build_smart_pick_profile(graded_df: pd.DataFrame) -> dict[str, object]:
     }
 
 
+def build_smart_weight_profile(graded_df: pd.DataFrame) -> dict[str, float | int | str]:
+    profile = DEFAULT_WEIGHT_PROFILE.copy()
+    if graded_df.empty:
+        return {
+            **profile,
+            "history_picks": 0,
+            "profile_mode": "default",
+            "profile_reason": "No graded pick history yet, so the smart engine is using the default balance between model signal and historical memory.",
+        }
+
+    smart_profile = build_smart_pick_profile(graded_df)
+    summary = smart_profile["summary"]
+    history_picks = int(summary["history_picks"])
+    overall_hit_rate = float(summary["overall_hit_rate"])
+    overall_roi_per_pick = float(summary["overall_roi_per_pick"])
+    overall_avg_model_prob = float(summary["overall_avg_model_prob"])
+    calibration_gap = overall_hit_rate - overall_avg_model_prob
+    history_strength = _clip((history_picks - 8) / 36.0, 0.0, 1.0)
+
+    market_signal = _safe_std(smart_profile["market_summary"].get("market_hit_rate", pd.Series(dtype=float))) if not smart_profile["market_summary"].empty else 0.0
+    sportsbook_signal = _safe_std(smart_profile["sportsbook_summary"].get("sportsbook_hit_rate", pd.Series(dtype=float))) if not smart_profile["sportsbook_summary"].empty else 0.0
+    confidence_signal = _safe_std(smart_profile["confidence_summary"].get("confidence_bucket_hit_rate", pd.Series(dtype=float))) if not smart_profile["confidence_summary"].empty else 0.0
+
+    profile["model_score_weight"] = round(_clip(0.42 + (calibration_gap * 0.90) - (history_strength * 0.05), 0.28, 0.52), 3)
+    profile["confidence_score_weight"] = round(_clip(0.28 + (confidence_signal * 0.35), 0.20, 0.38), 3)
+    profile["edge_multiplier"] = round(_clip(1.45 + (overall_roi_per_pick * 0.55), 1.00, 1.95), 3)
+    profile["history_market_weight"] = round(_clip(0.24 + (history_strength * 0.14) + (market_signal * 0.70), 0.18, 0.52), 3)
+    profile["history_confidence_weight"] = round(_clip(0.22 + (history_strength * 0.10) + (confidence_signal * 0.55), 0.16, 0.42), 3)
+    profile["history_sportsbook_weight"] = round(_clip(0.12 + (history_strength * 0.08) + (sportsbook_signal * 0.60), 0.08, 0.30), 3)
+    profile["market_roi_multiplier"] = round(_clip(8.0 + (history_strength * 3.5) + (max(overall_roi_per_pick, 0.0) * 2.0), 6.0, 14.0), 3)
+    profile["sportsbook_roi_multiplier"] = round(_clip(4.5 + (history_strength * 2.0) + (sportsbook_signal * 4.0), 3.0, 8.5), 3)
+    profile["expected_model_weight"] = round(_clip(0.58 + (calibration_gap * 0.50) - (history_strength * 0.04), 0.46, 0.68), 3)
+    profile["expected_market_weight"] = round(_clip(0.18 + (history_strength * 0.06) + (market_signal * 0.28), 0.14, 0.30), 3)
+    profile["expected_confidence_weight"] = round(_clip(0.12 + (history_strength * 0.04) + (confidence_signal * 0.22), 0.10, 0.24), 3)
+    derived_weight_sum = profile["expected_model_weight"] + profile["expected_market_weight"] + profile["expected_confidence_weight"]
+    profile["expected_sportsbook_weight"] = round(max(0.04, 1.0 - derived_weight_sum), 3)
+
+    if history_picks < 12:
+        mode = "default"
+        reason = "History is still small, so the smart engine is staying close to its default weighting profile."
+    elif history_picks < 35:
+        mode = "lightly_tuned"
+        reason = "The engine is lightly increasing history-aware weights where your graded results show meaningful separation by market, confidence, or sportsbook."
+    else:
+        mode = "history_informed"
+        reason = "The engine has enough graded history to lean more on the patterns that have actually held up in your tracked results."
+
+    return {
+        **profile,
+        "history_picks": history_picks,
+        "calibration_gap": round(calibration_gap, 4),
+        "market_signal": round(market_signal, 4),
+        "sportsbook_signal": round(sportsbook_signal, 4),
+        "confidence_signal": round(confidence_signal, 4),
+        "profile_mode": mode,
+        "profile_reason": reason,
+    }
+
+
 def build_smart_learning_tables(graded_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     profile = build_smart_pick_profile(graded_df)
+    weight_profile = build_smart_weight_profile(graded_df)
 
     market_summary = profile["market_summary"].copy()
     sportsbook_summary = profile["sportsbook_summary"].copy()
@@ -142,6 +225,7 @@ def build_smart_learning_tables(graded_df: pd.DataFrame) -> dict[str, pd.DataFra
 
     return {
         "summary": pd.DataFrame([profile["summary"]]),
+        "weight_profile": pd.DataFrame([weight_profile]),
         "market_summary": market_summary,
         "sportsbook_summary": sportsbook_summary,
         "confidence_summary": confidence_summary,
@@ -176,6 +260,7 @@ def score_smart_picks(candidates_df: pd.DataFrame, graded_df: pd.DataFrame) -> t
         return pd.DataFrame(), _empty_summary()
 
     profile = build_smart_pick_profile(graded_df)
+    weight_profile = build_smart_weight_profile(graded_df)
     summary = profile["summary"]
     scored = _coerce_numeric(
         candidates_df,
@@ -224,26 +309,26 @@ def score_smart_picks(candidates_df: pd.DataFrame, graded_df: pd.DataFrame) -> t
     line_delta = pd.to_numeric(scored.get("line_delta", 0.0), errors="coerce").fillna(0.0)
 
     base_score = (
-        (model_prob_pct * 0.42)
-        + (confidence_value * 0.28)
-        + edge_pct.clip(lower=0.0, upper=18.0) * 1.45
-        + books_count.clip(lower=1.0, upper=6.0) * 0.85
-        + line_delta.abs().clip(lower=0.0, upper=6.0) * 0.8
+        (model_prob_pct * float(weight_profile["model_score_weight"]))
+        + (confidence_value * float(weight_profile["confidence_score_weight"]))
+        + edge_pct.clip(lower=0.0, upper=18.0) * float(weight_profile["edge_multiplier"])
+        + books_count.clip(lower=1.0, upper=6.0) * float(weight_profile["books_multiplier"])
+        + line_delta.abs().clip(lower=0.0, upper=6.0) * float(weight_profile["line_delta_multiplier"])
     )
 
     history_lift = (
-        ((scored["market_blended_hit_rate"] - overall_hit_rate) * 100.0 * 0.36)
-        + ((scored["confidence_bucket_blended_hit_rate"] - overall_hit_rate) * 100.0 * 0.30)
-        + ((scored["sportsbook_blended_hit_rate"] - overall_hit_rate) * 100.0 * 0.18)
-        + (scored["market_blended_roi_per_pick"] * 10.0)
-        + (scored["sportsbook_blended_roi_per_pick"] * 6.0)
+        ((scored["market_blended_hit_rate"] - overall_hit_rate) * 100.0 * float(weight_profile["history_market_weight"]))
+        + ((scored["confidence_bucket_blended_hit_rate"] - overall_hit_rate) * 100.0 * float(weight_profile["history_confidence_weight"]))
+        + ((scored["sportsbook_blended_hit_rate"] - overall_hit_rate) * 100.0 * float(weight_profile["history_sportsbook_weight"]))
+        + (scored["market_blended_roi_per_pick"] * float(weight_profile["market_roi_multiplier"]))
+        + (scored["sportsbook_blended_roi_per_pick"] * float(weight_profile["sportsbook_roi_multiplier"]))
     )
 
     scored["smart_expected_win_rate"] = (
-        (pd.to_numeric(scored.get("model_prob", 0.0), errors="coerce").fillna(overall_avg_model_prob) * 0.58)
-        + (scored["market_blended_hit_rate"] * 0.22)
-        + (scored["confidence_bucket_blended_hit_rate"] * 0.14)
-        + (scored["sportsbook_blended_hit_rate"] * 0.06)
+        (pd.to_numeric(scored.get("model_prob", 0.0), errors="coerce").fillna(overall_avg_model_prob) * float(weight_profile["expected_model_weight"]))
+        + (scored["market_blended_hit_rate"] * float(weight_profile["expected_market_weight"]))
+        + (scored["confidence_bucket_blended_hit_rate"] * float(weight_profile["expected_confidence_weight"]))
+        + (scored["sportsbook_blended_hit_rate"] * float(weight_profile["expected_sportsbook_weight"]))
     ).clip(lower=0.01, upper=0.99)
 
     scored["smart_score"] = (base_score + history_lift).map(lambda value: round(_clip(float(value), 1.0, 99.0), 1))
@@ -269,6 +354,7 @@ def score_smart_picks(candidates_df: pd.DataFrame, graded_df: pd.DataFrame) -> t
         + pd.to_numeric(scored.get("sportsbook_picks", 0), errors="coerce").fillna(0)
         + pd.to_numeric(scored.get("confidence_bucket_picks", 0), errors="coerce").fillna(0)
     ).astype(int)
+    scored["smart_profile_mode"] = str(weight_profile["profile_mode"])
 
     return scored.sort_values(
         ["smart_score", "smart_expected_win_rate", "edge", "confidence"],
