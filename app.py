@@ -5039,7 +5039,14 @@ with tab5:
                     f"market history {float(resolved_weight_profile['history_market_weight']):.2f}."
                 )
 
-        smart_tab1, smart_tab2, smart_tab3 = st.tabs(["Best Markets", "Best Sportsbooks", "Confidence Memory"])
+        recent_signal_col1, recent_signal_col2 = st.columns(2)
+        recent_signal_col1.metric("Recent market signal", f"{float(smart_weight_row.get('recent_market_signal', 0.0) or 0.0):.3f}")
+        recent_signal_col2.metric("Recent sportsbook signal", f"{float(smart_weight_row.get('recent_sportsbook_signal', 0.0) or 0.0):.3f}")
+        st.caption("Recent-form memory is built from the latest settled graded sample, so the smart engine can react to short-term hot and cold pockets without abandoning full-history memory.")
+
+        smart_tab1, smart_tab2, smart_tab3, smart_tab4, smart_tab5 = st.tabs(
+            ["Best Markets", "Recent Markets", "Best Sportsbooks", "Recent Sportsbooks", "Confidence Memory"]
+        )
 
         with smart_tab1:
             market_learning = smart_learning_tables["market_summary"]
@@ -5064,6 +5071,28 @@ with tab5:
                 st.dataframe(market_learning_display, use_container_width=True, hide_index=True)
 
         with smart_tab2:
+            recent_market_learning = smart_learning_tables.get("recent_market_summary", pd.DataFrame())
+            if recent_market_learning.empty:
+                st.caption("No recent market-form sample yet.")
+            else:
+                recent_market_display = build_smart_learning_display(
+                    recent_market_learning.head(10),
+                    rename_map={
+                        "market": "Market",
+                        "recent_market_picks": "Recent Picks",
+                        "recent_market_hit_rate": "Recent Hit Rate %",
+                        "recent_market_roi_per_pick": "Recent Units Per Pick",
+                        "recent_market_avg_model_prob": "Recent Avg Model %",
+                        "recent_market_avg_confidence": "Recent Avg Confidence",
+                    },
+                    percent_columns=["recent_market_hit_rate", "recent_market_avg_model_prob"],
+                    value_columns=["recent_market_roi_per_pick", "recent_market_avg_confidence"],
+                )
+                if "Market" in recent_market_display.columns:
+                    recent_market_display["Market"] = recent_market_display["Market"].map(prettify_market_label)
+                st.dataframe(recent_market_display, use_container_width=True, hide_index=True)
+
+        with smart_tab3:
             sportsbook_learning = smart_learning_tables["sportsbook_summary"]
             if sportsbook_learning.empty:
                 st.caption("No sportsbook-specific history yet.")
@@ -5083,7 +5112,27 @@ with tab5:
                 )
                 st.dataframe(sportsbook_learning_display, use_container_width=True, hide_index=True)
 
-        with smart_tab3:
+        with smart_tab4:
+            recent_sportsbook_learning = smart_learning_tables.get("recent_sportsbook_summary", pd.DataFrame())
+            if recent_sportsbook_learning.empty:
+                st.caption("No recent sportsbook-form sample yet.")
+            else:
+                recent_sportsbook_display = build_smart_learning_display(
+                    recent_sportsbook_learning.head(10),
+                    rename_map={
+                        "sportsbook": "Sportsbook",
+                        "recent_sportsbook_picks": "Recent Picks",
+                        "recent_sportsbook_hit_rate": "Recent Hit Rate %",
+                        "recent_sportsbook_roi_per_pick": "Recent Units Per Pick",
+                        "recent_sportsbook_avg_model_prob": "Recent Avg Model %",
+                        "recent_sportsbook_avg_confidence": "Recent Avg Confidence",
+                    },
+                    percent_columns=["recent_sportsbook_hit_rate", "recent_sportsbook_avg_model_prob"],
+                    value_columns=["recent_sportsbook_roi_per_pick", "recent_sportsbook_avg_confidence"],
+                )
+                st.dataframe(recent_sportsbook_display, use_container_width=True, hide_index=True)
+
+        with smart_tab5:
             confidence_learning = smart_learning_tables["confidence_summary"]
             if confidence_learning.empty:
                 st.caption("No confidence-band history yet.")

@@ -240,6 +240,8 @@ def build_smart_learning_tables(graded_df: pd.DataFrame) -> dict[str, pd.DataFra
     market_summary = profile["market_summary"].copy()
     sportsbook_summary = profile["sportsbook_summary"].copy()
     confidence_summary = profile["confidence_summary"].copy()
+    recent_market_summary = profile["recent_market_summary"].copy()
+    recent_sportsbook_summary = profile["recent_sportsbook_summary"].copy()
 
     if not market_summary.empty:
         market_summary = market_summary.sort_values(
@@ -256,6 +258,16 @@ def build_smart_learning_tables(graded_df: pd.DataFrame) -> dict[str, pd.DataFra
             ["confidence_bucket_hit_rate", "confidence_bucket_roi_per_pick", "confidence_bucket_picks"],
             ascending=[False, False, False],
         )
+    if not recent_market_summary.empty:
+        recent_market_summary = recent_market_summary.sort_values(
+            ["recent_market_roi_per_pick", "recent_market_hit_rate", "recent_market_picks"],
+            ascending=[False, False, False],
+        )
+    if not recent_sportsbook_summary.empty:
+        recent_sportsbook_summary = recent_sportsbook_summary.sort_values(
+            ["recent_sportsbook_roi_per_pick", "recent_sportsbook_hit_rate", "recent_sportsbook_picks"],
+            ascending=[False, False, False],
+        )
 
     return {
         "summary": pd.DataFrame([profile["summary"]]),
@@ -263,6 +275,8 @@ def build_smart_learning_tables(graded_df: pd.DataFrame) -> dict[str, pd.DataFra
         "market_summary": market_summary,
         "sportsbook_summary": sportsbook_summary,
         "confidence_summary": confidence_summary,
+        "recent_market_summary": recent_market_summary,
+        "recent_sportsbook_summary": recent_sportsbook_summary,
     }
 
 
