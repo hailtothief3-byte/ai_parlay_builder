@@ -563,6 +563,8 @@ def build_overview_next_step_cards(
                 "status": "setup",
                 "confidence": confidence_label("High Confidence"),
                 "body": f"The {board_label} is still empty, so the best next move is loading fresh market rows before working in Edge Scanner or {build_label}.",
+                "action_label": "Focus Live Board",
+                "action_target": "live_board",
             }
         )
     elif overview_edges.empty:
@@ -572,6 +574,8 @@ def build_overview_next_step_cards(
                 "status": "data ready",
                 "confidence": confidence_label("Medium Confidence"),
                 "body": f"{sport_prefix}{board_label.capitalize()} rows are available, but edge-ranked picks are still thin. Review Edge Scanner after the next sync or loosen filters if you are testing locally.",
+                "action_label": "Focus Edge Scanner",
+                "action_target": "edge_scanner",
             }
         )
     elif overview_watchlist_alerts.empty:
@@ -581,6 +585,8 @@ def build_overview_next_step_cards(
                 "status": "builder",
                 "confidence": confidence_label("Medium Confidence"),
                 "body": f"The {board_label} and edge model are live. The next useful step is saving a few props to the watchlist so alerts and {build_label.lower()} workflows have stronger context.",
+                "action_label": "Focus Edge Scanner",
+                "action_target": "edge_scanner",
             }
         )
     else:
@@ -590,6 +596,8 @@ def build_overview_next_step_cards(
                 "status": "ready" if positive_trend else "builder",
                 "confidence": confidence_label("High Confidence" if len(overview_watchlist_alerts) >= 2 else "Medium Confidence"),
                 "body": f"{len(overview_watchlist_alerts)} current watchlist alert(s) are available, so {build_label} is a strong next stop for building or comparing {sport_prefix.lower()}tickets.",
+                "action_label": "Focus Parlay Lab",
+                "action_target": "parlay_lab",
             }
         )
 
@@ -600,6 +608,8 @@ def build_overview_next_step_cards(
                 "status": "tracking",
                 "confidence": confidence_label("High Confidence"),
                 "body": f"Once you like a build, save a ticket from {build_label} so {settlement_label}, ticket review, and bankroll tracking can start learning from it.",
+                "action_label": "Focus Parlay Lab",
+                "action_target": "parlay_lab",
             }
         )
     elif not overview_unresolved_tracked.empty:
@@ -609,6 +619,9 @@ def build_overview_next_step_cards(
                 "status": "needs action",
                 "confidence": confidence_label("High Confidence"),
                 "body": f"{len(overview_unresolved_tracked)} tracked pick(s) are still open, so Results & Grading is the best place to settle or sync {sport_prefix.lower()}outcomes next.",
+                "action_label": "Focus Settlement Queue",
+                "action_target": "results_grading",
+                "action_section_target": "enter_settled_result",
             }
         )
     elif overview_graded.empty:
@@ -618,6 +631,9 @@ def build_overview_next_step_cards(
                 "status": "learning",
                 "confidence": confidence_label("Medium Confidence"),
                 "body": f"You have {sport_prefix.lower()}tickets saved, but the smart engine still needs settled outcomes. Sync or enter results so the review and learning layers can strengthen.",
+                "action_label": "Focus Results & Grading",
+                "action_target": "results_grading",
+                "action_section_target": "saved_tickets",
             }
         )
     else:
@@ -627,6 +643,8 @@ def build_overview_next_step_cards(
                 "status": "analysis" if review_ready else "learning",
                 "confidence": confidence_label("High Confidence"),
                 "body": f"{len(overview_graded)} graded {sport_prefix.lower()}pick(s) are ready, so Weekly Review, Monthly Review, and Backtest are now worth checking for the next tuning call.",
+                "action_label": "Focus Backtest",
+                "action_target": "backtest",
             }
         )
 
@@ -637,6 +655,9 @@ def build_overview_next_step_cards(
                 "status": "optional",
                 "confidence": confidence_label("Medium Confidence"),
                 "body": "Bankroll tracking has not started yet. Logging manual bets or saved tickets will unlock ROI, yield, and bankroll trend visibility.",
+                "action_label": "Focus Bankroll Journal",
+                "action_target": "bankroll_journal",
+                "action_section_target": "bankroll_journal",
             }
         )
     elif cooling_trend:
@@ -646,6 +667,8 @@ def build_overview_next_step_cards(
                 "status": "trend watch",
                 "confidence": confidence_label("Medium Confidence"),
                 "body": f"Weekly and monthly review are leaning cooler right now, so it makes sense to keep {sport_prefix.lower()}stakes cleaner, shorter, and more selective until the trend firms back up.",
+                "action_label": "Focus Backtest",
+                "action_target": "backtest",
             }
         )
     elif positive_trend:
@@ -655,6 +678,8 @@ def build_overview_next_step_cards(
                 "status": "positive trend",
                 "confidence": confidence_label("Medium Confidence"),
                 "body": f"Weekly and monthly review are both supportive right now, so this is a healthier stretch to trust the current smart mix and let the strongest {sport_prefix.lower()}workflows do more of the lifting.",
+                "action_label": "Focus Parlay Lab",
+                "action_target": "parlay_lab",
             }
         )
 
@@ -672,6 +697,8 @@ def build_overview_next_step_cards(
                     "status": "source edge",
                     "confidence": confidence_label("Medium Confidence"),
                     "body": f"Smart Pick Engine (Auto) is outperforming Edge Scanner by {auto_units - legacy_units:+.2f} units per pick in graded history, so it is the stronger default workflow right now.",
+                    "action_label": "Focus Edge Scanner",
+                    "action_target": "edge_scanner",
                 }
         if source_card is None and not manual_row.empty and not auto_row.empty:
             manual_units = float(manual_row.iloc[0].get("roi_per_pick", 0.0) or 0.0)
@@ -682,6 +709,9 @@ def build_overview_next_step_cards(
                     "status": "source edge",
                     "confidence": confidence_label("Medium Confidence"),
                     "body": f"Smart Pick Engine (Manual) is ahead of Auto by {manual_units - auto_units:+.2f} units per pick, so manual tuning is still earning its keep for this board.",
+                    "action_label": "Focus Results & Grading",
+                    "action_target": "results_grading",
+                    "action_section_target": "smart_pick_learning",
                 }
         if source_card is None and not legacy_row.empty and legacy_row.iloc[0].get("picks", 0):
             source_card = {
@@ -689,6 +719,8 @@ def build_overview_next_step_cards(
                 "status": "source watch",
                 "confidence": confidence_label("Low Confidence"),
                 "body": f"{format_source_label(str(legacy_row.iloc[0].get('source') or 'edge_scanner'))} still has meaningful graded history here, so keep comparing it against the smart workflows before going all-in on one lane.",
+                "action_label": "Focus Edge Scanner",
+                "action_target": "edge_scanner",
             }
         if source_card is not None:
             cards.insert(1, source_card)
@@ -1788,7 +1820,24 @@ def render_period_model_review(review: dict[str, object], title: str) -> None:
             st.caption("No weekly market breakdown is available yet.")
 
 
-def render_recommendation_cards(cards: list[dict[str, str]], title: str) -> None:
+def handle_recommendation_card_action(card: dict[str, str]) -> None:
+    action_target = str(card.get("action_target") or "").strip()
+    action_section_target = str(card.get("action_section_target") or "").strip()
+    if not action_target:
+        return
+    set_dashboard_focus(action_target)
+    if action_target in {"results_grading", "bankroll_journal"} and action_section_target:
+        set_results_grading_focus(action_section_target)
+    elif action_target == "bankroll_journal":
+        set_results_grading_focus("bankroll_journal")
+    elif action_target == "parlay_lab" and action_section_target:
+        set_parlay_lab_focus(action_section_target)
+    elif action_target == "backtest" and action_section_target:
+        set_backtest_focus(action_section_target)
+    st.rerun()
+
+
+def render_recommendation_cards(cards: list[dict[str, str]], title: str, key_prefix: str = "recommendation_cards") -> None:
     st.markdown(f"### {title}")
     if not cards:
         render_empty_state(
@@ -1797,7 +1846,7 @@ def render_recommendation_cards(cards: list[dict[str, str]], title: str) -> None
             tone="info",
         )
         return
-    for card in cards:
+    for idx, card in enumerate(cards):
         confidence_text = str(card.get("confidence") or "").strip()
         confidence_markup = ""
         if confidence_text:
@@ -1844,6 +1893,10 @@ def render_recommendation_cards(cards: list[dict[str, str]], title: str) -> None
             """,
             unsafe_allow_html=True,
         )
+        action_label = str(card.get("action_label") or "").strip()
+        if action_label:
+            if st.button(action_label, key=f"{key_prefix}_{idx}", use_container_width=True):
+                handle_recommendation_card_action(card)
 
 
 def apply_review_action_checklist(
@@ -3076,6 +3129,7 @@ with tab0:
     overview_weekly_review = build_weekly_model_review(overview_graded)
     overview_monthly_review = build_monthly_model_review(overview_graded)
     overview_source_summary = build_true_source_summary(overview_graded)
+    overview_review_action_checklist = build_review_action_checklist(overview_weekly_review, overview_monthly_review)
     overview_journal = get_journal_entries(sport_label)
     overview_bankroll = build_bankroll_summary(overview_journal, bankroll_amount)
     overview_kpis = build_bankroll_kpis(overview_journal, bankroll_amount)
@@ -3139,6 +3193,41 @@ with tab0:
         """,
         unsafe_allow_html=True,
     )
+    operating_mode_target_map = {
+        "Edge Scanner": "edge_scanner",
+        "Parlay Lab": "parlay_lab",
+        "Results & Grading": "results_grading",
+        "Backtest": "backtest",
+        "Live Board": "live_board",
+    }
+    operating_mode_target = operating_mode_target_map.get(overview_operating_mode["default_workflow"], "overview")
+    operating_mode_col1, operating_mode_col2 = st.columns(2)
+    if operating_mode_col1.button(
+        f"Focus {overview_operating_mode['default_workflow']}",
+        key="overview_open_default_workflow",
+        use_container_width=True,
+    ):
+        set_dashboard_focus(operating_mode_target)
+        if operating_mode_target == "results_grading":
+            set_results_grading_focus("saved_tickets")
+        st.rerun()
+    if operating_mode_col2.button(
+        "Apply Current Review Checklist",
+        key="overview_apply_review_checklist",
+        use_container_width=True,
+    ):
+        apply_review_action_checklist(
+            sport_label=sport_label,
+            checklist=overview_review_action_checklist,
+            live_legs_session_key=live_legs_session_key,
+            live_min_conf_session_key=live_min_conf_session_key,
+            live_same_player_session_key=live_same_player_session_key,
+            demo_style_session_key=demo_style_session_key,
+            demo_same_team_session_key=demo_same_team_session_key,
+        )
+        set_dashboard_focus("parlay_lab")
+        st.success("Applied the current review checklist and moved the app toward Parlay Lab.")
+        st.rerun()
     overview_next_step_cards = build_overview_next_step_cards(
         overview_board=overview_board,
         overview_edges=overview_edges,
@@ -3153,7 +3242,7 @@ with tab0:
         sport_label=sport_label,
         is_dfs=is_dfs,
     )
-    render_recommendation_cards(overview_next_step_cards, "Suggested Next Steps")
+    render_recommendation_cards(overview_next_step_cards, "Suggested Next Steps", key_prefix="overview_next_steps")
 
     if not overview_watchlist_alerts.empty:
         st.markdown("### Top Watchlist Signals")
