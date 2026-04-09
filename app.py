@@ -523,6 +523,93 @@ def format_pending_result_value(value, pending_label: str) -> str:
     return value_text
 
 
+def build_overview_next_step_cards(
+    overview_board: pd.DataFrame,
+    overview_edges: pd.DataFrame,
+    overview_watchlist_alerts: pd.DataFrame,
+    overview_tickets: pd.DataFrame,
+    overview_unresolved_tracked: pd.DataFrame,
+    overview_graded: pd.DataFrame,
+    overview_journal: pd.DataFrame,
+) -> list[dict[str, str]]:
+    cards: list[dict[str, str]] = []
+    if overview_board.empty:
+        cards.append(
+            {
+                "title": "Start With Live Sync Or Demo Seed",
+                "status": "setup",
+                "body": "The live board is still empty, so the best next move is loading fresh market rows before working in Edge Scanner or Parlay Lab.",
+            }
+        )
+    elif overview_edges.empty:
+        cards.append(
+            {
+                "title": "Check Edge Scanner Next",
+                "status": "data ready",
+                "body": "Board rows are available, but edge-ranked picks are still thin. Review Edge Scanner after the next sync or loosen filters if you are testing locally.",
+            }
+        )
+    elif overview_watchlist_alerts.empty:
+        cards.append(
+            {
+                "title": "Promote Strong Edges Into Watchlist",
+                "status": "builder",
+                "body": "The board and edge model are live. The next useful step is saving a few props to the watchlist so alerts and ticket workflows have stronger context.",
+            }
+        )
+    else:
+        cards.append(
+            {
+                "title": "Parlay Lab Is Ready",
+                "status": "ready",
+                "body": f"{len(overview_watchlist_alerts)} current watchlist alert(s) are available, so Parlay Lab is a strong next stop for building or comparing tickets.",
+            }
+        )
+
+    if overview_tickets.empty:
+        cards.append(
+            {
+                "title": "Save Your First Ticket",
+                "status": "tracking",
+                "body": "Once you like a build, save a ticket from Parlay Lab so Results & Grading, ticket review, and bankroll tracking can start learning from it.",
+            }
+        )
+    elif not overview_unresolved_tracked.empty:
+        cards.append(
+            {
+                "title": "Work The Settlement Queue",
+                "status": "needs action",
+                "body": f"{len(overview_unresolved_tracked)} tracked pick(s) are still open, so Results & Grading is the best place to settle or sync outcomes next.",
+            }
+        )
+    elif overview_graded.empty:
+        cards.append(
+            {
+                "title": "Build Graded History",
+                "status": "learning",
+                "body": "You have tickets saved, but the smart engine still needs settled outcomes. Sync or enter results so the review and learning layers can strengthen.",
+            }
+        )
+    else:
+        cards.append(
+            {
+                "title": "Review Model Performance",
+                "status": "analysis",
+                "body": f"{len(overview_graded)} graded pick(s) are ready, so Weekly Review, Monthly Review, and Backtest are now worth checking for the next tuning call.",
+            }
+        )
+
+    if overview_journal.empty:
+        cards.append(
+            {
+                "title": "Activate Bankroll Journal",
+                "status": "optional",
+                "body": "Bankroll tracking has not started yet. Logging manual bets or saved tickets will unlock ROI, yield, and bankroll trend visibility.",
+            }
+        )
+    return cards[:3]
+
+
 def build_watchlist_alert_reason(row: pd.Series, threshold_edge_pct: float, threshold_confidence: float) -> str:
     edge_pct = float(row.get("edge", 0.0) or 0.0) * 100
     confidence = float(row.get("confidence", 0.0) or 0.0)
@@ -2849,6 +2936,16 @@ with tab0:
 
     st.markdown("### Coach Mode")
     st.info(build_coach_mode_summary(overview_weekly_review, overview_monthly_review, sport_label=sport_label))
+    overview_next_step_cards = build_overview_next_step_cards(
+        overview_board=overview_board,
+        overview_edges=overview_edges,
+        overview_watchlist_alerts=overview_watchlist_alerts,
+        overview_tickets=overview_tickets,
+        overview_unresolved_tracked=overview_unresolved_tracked,
+        overview_graded=overview_graded,
+        overview_journal=overview_journal,
+    )
+    render_recommendation_cards(overview_next_step_cards, "Suggested Next Steps")
 
     if not overview_watchlist_alerts.empty:
         st.markdown("### Top Watchlist Signals")
