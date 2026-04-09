@@ -531,14 +531,36 @@ def build_overview_next_step_cards(
     overview_unresolved_tracked: pd.DataFrame,
     overview_graded: pd.DataFrame,
     overview_journal: pd.DataFrame,
+    weekly_review: dict[str, object],
+    monthly_review: dict[str, object],
+    sport_label: str,
+    is_dfs: bool,
 ) -> list[dict[str, str]]:
     cards: list[dict[str, str]] = []
+    weekly_current = dict(weekly_review.get("current_summary") or {})
+    monthly_current = dict(monthly_review.get("current_summary") or {})
+    weekly_prior = dict(weekly_review.get("prior_summary") or {})
+    weekly_units = float(weekly_current.get("profit_units", 0.0) or 0.0)
+    monthly_units = float(monthly_current.get("profit_units", 0.0) or 0.0)
+    weekly_hit_delta = float(weekly_current.get("hit_rate", 0.0) or 0.0) - float(weekly_prior.get("hit_rate", 0.0) or 0.0)
+    sport_prefix = f"{sport_label} " if str(sport_label).strip() else ""
+    board_label = "DFS board" if is_dfs else "sportsbook board"
+    build_label = "DFS auto-slip and card builder" if is_dfs else "Parlay Lab"
+    settlement_label = "Results & Grading" if not is_dfs else "ticket review and result entry"
+    review_ready = not overview_graded.empty
+    positive_trend = weekly_units > 0 and monthly_units >= 0
+    cooling_trend = weekly_units < 0 or monthly_units < 0 or weekly_hit_delta < -0.04
+
+    def confidence_label(level: str) -> str:
+        return level
+
     if overview_board.empty:
         cards.append(
             {
-                "title": "Start With Live Sync Or Demo Seed",
+                "title": f"Start With {sport_prefix}{'DFS ' if is_dfs else ''}Sync Or Demo Seed".strip(),
                 "status": "setup",
-                "body": "The live board is still empty, so the best next move is loading fresh market rows before working in Edge Scanner or Parlay Lab.",
+                "confidence": confidence_label("High Confidence"),
+                "body": f"The {board_label} is still empty, so the best next move is loading fresh market rows before working in Edge Scanner or {build_label}.",
             }
         )
     elif overview_edges.empty:
@@ -546,7 +568,8 @@ def build_overview_next_step_cards(
             {
                 "title": "Check Edge Scanner Next",
                 "status": "data ready",
-                "body": "Board rows are available, but edge-ranked picks are still thin. Review Edge Scanner after the next sync or loosen filters if you are testing locally.",
+                "confidence": confidence_label("Medium Confidence"),
+                "body": f"{sport_prefix}{board_label.capitalize()} rows are available, but edge-ranked picks are still thin. Review Edge Scanner after the next sync or loosen filters if you are testing locally.",
             }
         )
     elif overview_watchlist_alerts.empty:
@@ -554,15 +577,17 @@ def build_overview_next_step_cards(
             {
                 "title": "Promote Strong Edges Into Watchlist",
                 "status": "builder",
-                "body": "The board and edge model are live. The next useful step is saving a few props to the watchlist so alerts and ticket workflows have stronger context.",
+                "confidence": confidence_label("Medium Confidence"),
+                "body": f"The {board_label} and edge model are live. The next useful step is saving a few props to the watchlist so alerts and {build_label.lower()} workflows have stronger context.",
             }
         )
     else:
         cards.append(
             {
-                "title": "Parlay Lab Is Ready",
-                "status": "ready",
-                "body": f"{len(overview_watchlist_alerts)} current watchlist alert(s) are available, so Parlay Lab is a strong next stop for building or comparing tickets.",
+                "title": f"{build_label} Is Ready",
+                "status": "ready" if positive_trend else "builder",
+                "confidence": confidence_label("High Confidence" if len(overview_watchlist_alerts) >= 2 else "Medium Confidence"),
+                "body": f"{len(overview_watchlist_alerts)} current watchlist alert(s) are available, so {build_label} is a strong next stop for building or comparing {sport_prefix.lower()}tickets.",
             }
         )
 
@@ -571,7 +596,8 @@ def build_overview_next_step_cards(
             {
                 "title": "Save Your First Ticket",
                 "status": "tracking",
-                "body": "Once you like a build, save a ticket from Parlay Lab so Results & Grading, ticket review, and bankroll tracking can start learning from it.",
+                "confidence": confidence_label("High Confidence"),
+                "body": f"Once you like a build, save a ticket from {build_label} so {settlement_label}, ticket review, and bankroll tracking can start learning from it.",
             }
         )
     elif not overview_unresolved_tracked.empty:
@@ -579,7 +605,8 @@ def build_overview_next_step_cards(
             {
                 "title": "Work The Settlement Queue",
                 "status": "needs action",
-                "body": f"{len(overview_unresolved_tracked)} tracked pick(s) are still open, so Results & Grading is the best place to settle or sync outcomes next.",
+                "confidence": confidence_label("High Confidence"),
+                "body": f"{len(overview_unresolved_tracked)} tracked pick(s) are still open, so Results & Grading is the best place to settle or sync {sport_prefix.lower()}outcomes next.",
             }
         )
     elif overview_graded.empty:
@@ -587,15 +614,17 @@ def build_overview_next_step_cards(
             {
                 "title": "Build Graded History",
                 "status": "learning",
-                "body": "You have tickets saved, but the smart engine still needs settled outcomes. Sync or enter results so the review and learning layers can strengthen.",
+                "confidence": confidence_label("Medium Confidence"),
+                "body": f"You have {sport_prefix.lower()}tickets saved, but the smart engine still needs settled outcomes. Sync or enter results so the review and learning layers can strengthen.",
             }
         )
     else:
         cards.append(
             {
                 "title": "Review Model Performance",
-                "status": "analysis",
-                "body": f"{len(overview_graded)} graded pick(s) are ready, so Weekly Review, Monthly Review, and Backtest are now worth checking for the next tuning call.",
+                "status": "analysis" if review_ready else "learning",
+                "confidence": confidence_label("High Confidence"),
+                "body": f"{len(overview_graded)} graded {sport_prefix.lower()}pick(s) are ready, so Weekly Review, Monthly Review, and Backtest are now worth checking for the next tuning call.",
             }
         )
 
@@ -604,7 +633,26 @@ def build_overview_next_step_cards(
             {
                 "title": "Activate Bankroll Journal",
                 "status": "optional",
+                "confidence": confidence_label("Medium Confidence"),
                 "body": "Bankroll tracking has not started yet. Logging manual bets or saved tickets will unlock ROI, yield, and bankroll trend visibility.",
+            }
+        )
+    elif cooling_trend:
+        cards.append(
+            {
+                "title": f"Stay Selective On {sport_prefix}Volume".strip(),
+                "status": "trend watch",
+                "confidence": confidence_label("Medium Confidence"),
+                "body": f"Weekly and monthly review are leaning cooler right now, so it makes sense to keep {sport_prefix.lower()}stakes cleaner, shorter, and more selective until the trend firms back up.",
+            }
+        )
+    elif positive_trend:
+        cards.append(
+            {
+                "title": f"Lean Into The Strong {sport_prefix}Window".strip(),
+                "status": "positive trend",
+                "confidence": confidence_label("Medium Confidence"),
+                "body": f"Weekly and monthly review are both supportive right now, so this is a healthier stretch to trust the current smart mix and let the strongest {sport_prefix.lower()}workflows do more of the lifting.",
             }
         )
     return cards[:3]
@@ -1656,6 +1704,21 @@ def render_recommendation_cards(cards: list[dict[str, str]], title: str) -> None
         )
         return
     for card in cards:
+        confidence_text = str(card.get("confidence") or "").strip()
+        confidence_markup = ""
+        if confidence_text:
+            confidence_markup = f"""
+                <div style="
+                    padding:0.22rem 0.7rem;
+                    border-radius:999px;
+                    border:1px solid {theme['card_border']};
+                    color:{theme['section_subtitle']};
+                    font-size:0.78rem;
+                    font-weight:700;
+                    letter-spacing:0.03em;
+                    text-transform:uppercase;
+                ">{confidence_text}</div>
+            """
         st.markdown(
             f"""
             <div style="
@@ -1679,6 +1742,7 @@ def render_recommendation_cards(cards: list[dict[str, str]], title: str) -> None
                         text-transform:uppercase;
                     ">{card.get('status', '')}</div>
                 </div>
+                {confidence_markup}
                 <div style="margin-top:0.55rem;color:{theme['body_text']};line-height:1.5;">
                     {card.get('body', '')}
                 </div>
@@ -2944,6 +3008,10 @@ with tab0:
         overview_unresolved_tracked=overview_unresolved_tracked,
         overview_graded=overview_graded,
         overview_journal=overview_journal,
+        weekly_review=overview_weekly_review,
+        monthly_review=overview_monthly_review,
+        sport_label=sport_label,
+        is_dfs=is_dfs,
     )
     render_recommendation_cards(overview_next_step_cards, "Suggested Next Steps")
 
