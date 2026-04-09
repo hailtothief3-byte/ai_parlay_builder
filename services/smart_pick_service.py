@@ -255,6 +255,65 @@ def _build_reason_text(row: pd.Series) -> str:
     return " | ".join(parts[:4])
 
 
+def _build_audit_label(row: pd.Series) -> str:
+    player = str(row.get("player") or "Unknown").strip()
+    market = str(row.get("market") or "").strip().replace("_", " ").title()
+    pick = str(row.get("pick") or "").strip()
+    sportsbook = str(row.get("sportsbook") or "").strip()
+    return " | ".join(part for part in [player, market, pick, sportsbook] if part)
+
+
+def build_smart_pick_audit(candidate_row: pd.Series) -> pd.DataFrame:
+    if candidate_row is None or candidate_row.empty:
+        return pd.DataFrame()
+
+    audit_rows = [
+        {
+            "component": "Model probability",
+            "impact": candidate_row.get("audit_model_score"),
+            "detail": f"{float(candidate_row.get('model_prob', 0.0) or 0.0) * 100:.1f}% model probability multiplied by the current model weight.",
+        },
+        {
+            "component": "Confidence",
+            "impact": candidate_row.get("audit_confidence_score"),
+            "detail": f"{float(candidate_row.get('confidence', 0.0) or 0.0):.1f} confidence applied through the current confidence weight.",
+        },
+        {
+            "component": "Edge boost",
+            "impact": candidate_row.get("audit_edge_score"),
+            "detail": f"{float(candidate_row.get('edge', 0.0) or 0.0) * 100:.1f}% edge multiplied by the tuned edge multiplier.",
+        },
+        {
+            "component": "Books support",
+            "impact": candidate_row.get("audit_books_score"),
+            "detail": f"{float(candidate_row.get('books_count', 1.0) or 1.0):.0f} books contributing confirmation strength.",
+        },
+        {
+            "component": "Line delta",
+            "impact": candidate_row.get("audit_line_delta_score"),
+            "detail": f"{float(candidate_row.get('line_delta', 0.0) or 0.0):.2f} absolute line delta contributing movement signal.",
+        },
+        {
+            "component": "Market history",
+            "impact": candidate_row.get("audit_market_history_score"),
+            "detail": f"{float(candidate_row.get('market_blended_hit_rate', 0.0) or 0.0) * 100:.1f}% blended market hit rate and ROI memory.",
+        },
+        {
+            "component": "Confidence history",
+            "impact": candidate_row.get("audit_confidence_history_score"),
+            "detail": f"{float(candidate_row.get('confidence_bucket_blended_hit_rate', 0.0) or 0.0) * 100:.1f}% blended confidence-band hit rate.",
+        },
+        {
+            "component": "Sportsbook history",
+            "impact": candidate_row.get("audit_sportsbook_history_score"),
+            "detail": f"{float(candidate_row.get('sportsbook_blended_hit_rate', 0.0) or 0.0) * 100:.1f}% blended sportsbook hit rate and ROI memory.",
+        },
+    ]
+    audit_df = pd.DataFrame(audit_rows)
+    audit_df["impact"] = pd.to_numeric(audit_df["impact"], errors="coerce").round(2)
+    return audit_df
+
+
 def score_smart_picks(candidates_df: pd.DataFrame, graded_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float | int]]:
     if candidates_df.empty:
         return pd.DataFrame(), _empty_summary()
@@ -308,20 +367,36 @@ def score_smart_picks(candidates_df: pd.DataFrame, graded_df: pd.DataFrame) -> t
     books_count = pd.to_numeric(scored.get("books_count", 1.0), errors="coerce").fillna(1.0)
     line_delta = pd.to_numeric(scored.get("line_delta", 0.0), errors="coerce").fillna(0.0)
 
+    scored["audit_model_score"] = model_prob_pct * float(weight_profile["model_score_weight"])
+    scored["audit_confidence_score"] = confidence_value * float(weight_profile["confidence_score_weight"])
+    scored["audit_edge_score"] = edge_pct.clip(lower=0.0, upper=18.0) * float(weight_profile["edge_multiplier"])
+    scored["audit_books_score"] = books_count.clip(lower=1.0, upper=6.0) * float(weight_profile["books_multiplier"])
+    scored["audit_line_delta_score"] = line_delta.abs().clip(lower=0.0, upper=6.0) * float(weight_profile["line_delta_multiplier"])
+
+    scored["audit_market_history_score"] = (
+        ((scored["market_blended_hit_rate"] - overall_hit_rate) * 100.0 * float(weight_profile["history_market_weight"]))
+        + (scored["market_blended_roi_per_pick"] * float(weight_profile["market_roi_multiplier"]))
+    )
+    scored["audit_confidence_history_score"] = (
+        (scored["confidence_bucket_blended_hit_rate"] - overall_hit_rate) * 100.0 * float(weight_profile["history_confidence_weight"])
+    )
+    scored["audit_sportsbook_history_score"] = (
+        ((scored["sportsbook_blended_hit_rate"] - overall_hit_rate) * 100.0 * float(weight_profile["history_sportsbook_weight"]))
+        + (scored["sportsbook_blended_roi_per_pick"] * float(weight_profile["sportsbook_roi_multiplier"]))
+    )
+
     base_score = (
-        (model_prob_pct * float(weight_profile["model_score_weight"]))
-        + (confidence_value * float(weight_profile["confidence_score_weight"]))
-        + edge_pct.clip(lower=0.0, upper=18.0) * float(weight_profile["edge_multiplier"])
-        + books_count.clip(lower=1.0, upper=6.0) * float(weight_profile["books_multiplier"])
-        + line_delta.abs().clip(lower=0.0, upper=6.0) * float(weight_profile["line_delta_multiplier"])
+        scored["audit_model_score"]
+        + scored["audit_confidence_score"]
+        + scored["audit_edge_score"]
+        + scored["audit_books_score"]
+        + scored["audit_line_delta_score"]
     )
 
     history_lift = (
-        ((scored["market_blended_hit_rate"] - overall_hit_rate) * 100.0 * float(weight_profile["history_market_weight"]))
-        + ((scored["confidence_bucket_blended_hit_rate"] - overall_hit_rate) * 100.0 * float(weight_profile["history_confidence_weight"]))
-        + ((scored["sportsbook_blended_hit_rate"] - overall_hit_rate) * 100.0 * float(weight_profile["history_sportsbook_weight"]))
-        + (scored["market_blended_roi_per_pick"] * float(weight_profile["market_roi_multiplier"]))
-        + (scored["sportsbook_blended_roi_per_pick"] * float(weight_profile["sportsbook_roi_multiplier"]))
+        scored["audit_market_history_score"]
+        + scored["audit_confidence_history_score"]
+        + scored["audit_sportsbook_history_score"]
     )
 
     scored["smart_expected_win_rate"] = (
@@ -355,6 +430,7 @@ def score_smart_picks(candidates_df: pd.DataFrame, graded_df: pd.DataFrame) -> t
         + pd.to_numeric(scored.get("confidence_bucket_picks", 0), errors="coerce").fillna(0)
     ).astype(int)
     scored["smart_profile_mode"] = str(weight_profile["profile_mode"])
+    scored["smart_audit_label"] = scored.apply(_build_audit_label, axis=1)
 
     return scored.sort_values(
         ["smart_score", "smart_expected_win_rate", "edge", "confidence"],

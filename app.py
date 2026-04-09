@@ -41,7 +41,7 @@ from services.results_service import (
 from services.research import ResearchService
 from services.settings_manager import reload_runtime_modules, upsert_env_values
 from services.smart_parlay_profile_service import build_smart_parlay_profiles
-from services.smart_pick_service import build_smart_learning_tables, score_smart_picks
+from services.smart_pick_service import build_smart_learning_tables, build_smart_pick_audit, score_smart_picks
 from services.stats_service import (
     build_stats_template,
     get_latest_stats_snapshots,
@@ -2771,6 +2771,43 @@ with tab2:
 
         for card in cards:
             render_prop_card(card)
+
+        st.markdown("### Smart Score Audit")
+        audit_candidates = display_edges.sort_values(["smart_score", "smart_expected_win_rate", "edge"], ascending=False).head(20).copy()
+        if audit_candidates.empty:
+            st.caption("No smart-ranked candidates are available to audit right now.")
+        else:
+            audit_options = audit_candidates["smart_audit_label"].tolist() if "smart_audit_label" in audit_candidates.columns else []
+            selected_audit_pick = st.selectbox(
+                "Inspect a smart-ranked pick",
+                audit_options,
+                key="smart_score_audit_pick",
+            )
+            selected_audit_row = audit_candidates[audit_candidates["smart_audit_label"] == selected_audit_pick].head(1)
+            if not selected_audit_row.empty:
+                audit_row = selected_audit_row.iloc[0]
+                audit_metric_col1, audit_metric_col2, audit_metric_col3, audit_metric_col4 = st.columns(4)
+                audit_metric_col1.metric("Smart score", f"{float(audit_row.get('smart_score', 0.0) or 0.0):.1f}")
+                audit_metric_col2.metric("Expected win %", f"{float(audit_row.get('smart_expected_win_rate', 0.0) or 0.0) * 100:.1f}%")
+                audit_metric_col3.metric("Profile mode", str(audit_row.get("smart_profile_mode") or "default").replace("_", " ").title())
+                audit_metric_col4.metric("History picks used", f"{int(audit_row.get('history_picks_used', 0) or 0)}")
+                st.caption(str(audit_row.get("smart_summary") or ""))
+
+                audit_df = build_smart_pick_audit(audit_row)
+                if not audit_df.empty:
+                    st.dataframe(
+                        compact_numeric_table(
+                            audit_df.rename(
+                                columns={
+                                    "component": "Score Component",
+                                    "impact": "Impact",
+                                    "detail": "Why",
+                                }
+                            )
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
         track_count = st.slider("Track top live edges", min_value=1, max_value=25, value=5, key="track_top_edges")
         if st.button("Save Top Live Edges For Grading", use_container_width=True):
