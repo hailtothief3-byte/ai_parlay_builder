@@ -523,8 +523,55 @@ def format_pending_result_value(value, pending_label: str) -> str:
     return value_text
 
 
-def render_top_priority_strip(operating_mode: dict[str, str], priority_cards: list[dict[str, str]]) -> None:
+def build_market_pulse_summary(edges_df: pd.DataFrame, watchlist_alerts_df: pd.DataFrame, is_dfs: bool) -> dict[str, str]:
+    edge_count = int(len(edges_df)) if isinstance(edges_df, pd.DataFrame) else 0
+    live_count = 0
+    if isinstance(edges_df, pd.DataFrame) and not edges_df.empty and "coverage_status" in edges_df.columns:
+        live_count = int((edges_df["coverage_status"].astype(str) == "Live").sum())
+    alert_count = int(len(watchlist_alerts_df)) if isinstance(watchlist_alerts_df, pd.DataFrame) else 0
+    board_label = "DFS board" if is_dfs else "sportsbook board"
+    if edge_count <= 0:
+        return {
+            "title": "Thin board",
+            "body": f"The {board_label} does not have ranked live edges yet, so sync health and market coverage still matter more than ticket building.",
+        }
+    if edge_count < 8 or live_count < 5:
+        return {
+            "title": "Selective board",
+            "body": f"{edge_count} ranked edges are live with {live_count} provider-backed rows. This is a cleaner spot for shorter, more selective builds.",
+        }
+    if alert_count >= 3 or edge_count >= 18:
+        return {
+            "title": "Crowded board",
+            "body": f"{edge_count} ranked edges and {alert_count} alert-ready spots are live. Let the smart ranker and watchlist do more filtering before you expand exposure.",
+        }
+    return {
+        "title": "Healthy board",
+        "body": f"{edge_count} ranked edges are available with {live_count} live-supported rows. This is a balanced window for scanning and building without forcing volume.",
+    }
+
+
+def render_top_priority_strip(
+    operating_mode: dict[str, str],
+    priority_cards: list[dict[str, str]],
+    source_summary_df: pd.DataFrame,
+    edges_df: pd.DataFrame,
+    watchlist_alerts_df: pd.DataFrame,
+    sport_label: str,
+    is_dfs: bool,
+) -> None:
     top_cards = priority_cards[:2]
+    pulse = build_market_pulse_summary(edges_df, watchlist_alerts_df, is_dfs)
+    source_badges: list[str] = []
+    if isinstance(source_summary_df, pd.DataFrame) and not source_summary_df.empty and "source" in source_summary_df.columns:
+        for _, row in source_summary_df.head(2).iterrows():
+            badge_label = format_source_label(str(row.get("source") or "workflow"))
+            roi = float(row.get("roi_per_pick", 0.0) or 0.0)
+            picks = int(row.get("picks", 0) or 0)
+            source_badges.append(
+                f'<span class="priority-strip__badge">{badge_label}: {roi:+.2f} u/pick over {picks} picks</span>'
+            )
+    posture_label = "DFS posture" if is_dfs else f"{sport_label} posture".strip()
     cards_markup: list[str] = []
     for card in top_cards:
         cards_markup.append(
@@ -540,9 +587,16 @@ def render_top_priority_strip(operating_mode: dict[str, str], priority_cards: li
         f"""
         <div class="priority-strip">
             <div class="priority-strip__mode">
-                <div class="priority-strip__eyebrow">Today's priorities</div>
+                <div class="priority-strip__eyebrow">{posture_label}</div>
                 <div class="priority-strip__mode-title">{operating_mode.get('title', '')}</div>
                 <div class="priority-strip__body">{operating_mode.get('body', '')}</div>
+                <div class="priority-strip__pulse">
+                    <strong>{pulse.get('title', '')}</strong>
+                    <span>{pulse.get('body', '')}</span>
+                </div>
+                <div class="priority-strip__badges">
+                    {''.join(source_badges)}
+                </div>
             </div>
             <div class="priority-strip__cards">
                 {''.join(cards_markup)}
@@ -2424,6 +2478,38 @@ header[data-testid="stHeader"] [role="button"]:hover,
     font-size: 0.9rem;
     line-height: 1.5;
 }
+.priority-strip__pulse {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid __CARD_BORDER__;
+    display: grid;
+    gap: 0.22rem;
+}
+.priority-strip__pulse strong {
+    color: __HEADING_TEXT__;
+    font-size: 0.9rem;
+}
+.priority-strip__pulse span {
+    color: __BODY_TEXT__;
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+.priority-strip__badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.75rem;
+}
+.priority-strip__badge {
+    display: inline-block;
+    padding: 0.32rem 0.6rem;
+    border-radius: 999px;
+    background: __HERO_PILL_BG__;
+    border: 1px solid __CARD_BORDER__;
+    color: __SECTION_SUBTITLE__;
+    font-size: 0.76rem;
+    font-weight: 700;
+}
 .section-header {
     margin: 0.1rem 0 0.9rem;
 }
@@ -2880,7 +2966,15 @@ top_priority_cards = build_overview_next_step_cards(
     sport_label=sport_label,
     is_dfs=is_dfs,
 )
-render_top_priority_strip(top_priority_operating_mode, top_priority_cards)
+render_top_priority_strip(
+    top_priority_operating_mode,
+    top_priority_cards,
+    source_summary_df=top_priority_source_summary,
+    edges_df=top_priority_edges,
+    watchlist_alerts_df=top_priority_watchlist_alerts,
+    sport_label=sport_label,
+    is_dfs=is_dfs,
+)
 if not sync_enabled:
     st.info("This sport is routed through the esports provider slot. Demo/live-seeded views work now; external esports API integration is the next step.")
 
