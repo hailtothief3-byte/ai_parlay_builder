@@ -434,6 +434,17 @@ def format_relative_timestamp(raw_ts, prefix: str = "") -> str:
         return f"{prefix}unknown".strip()
 
 
+def format_pending_result_value(value, pending_label: str) -> str:
+    if value is None:
+        return pending_label
+    if isinstance(value, float) and pd.isna(value):
+        return pending_label
+    value_text = str(value).strip()
+    if not value_text or value_text.lower() == "none":
+        return pending_label
+    return value_text
+
+
 def build_watchlist_alert_reason(row: pd.Series, threshold_edge_pct: float, threshold_confidence: float) -> str:
     edge_pct = float(row.get("edge", 0.0) or 0.0) * 100
     confidence = float(row.get("confidence", 0.0) or 0.0)
@@ -4982,21 +4993,27 @@ with tab5:
 
                     if not ticket_legs_with_results.empty:
                         st.markdown("##### Ticket Leg Outcomes")
+                        ticket_leg_outcomes_display = ticket_legs_with_results[
+                            [
+                                "leg_rank",
+                                "player",
+                                "market",
+                                "pick",
+                                "line",
+                                "actual_value",
+                                "winning_side",
+                                "grade",
+                                "sportsbook",
+                            ]
+                        ].copy()
+                        ticket_leg_outcomes_display["actual_value"] = ticket_leg_outcomes_display["actual_value"].map(
+                            lambda value: format_pending_result_value(value, "Pending")
+                        )
+                        ticket_leg_outcomes_display["winning_side"] = ticket_leg_outcomes_display["winning_side"].map(
+                            lambda value: format_pending_result_value(value, "Awaiting result")
+                        )
                         st.dataframe(
-                            compact_numeric_table(
-                            ticket_legs_with_results[
-                                [
-                                    "leg_rank",
-                                    "player",
-                                    "market",
-                                    "pick",
-                                    "line",
-                                    "actual_value",
-                                    "winning_side",
-                                    "grade",
-                                    "sportsbook",
-                                ]
-                            ]),
+                            compact_numeric_table(ticket_leg_outcomes_display),
                             use_container_width=True,
                         )
 
