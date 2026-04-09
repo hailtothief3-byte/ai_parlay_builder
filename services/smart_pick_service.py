@@ -380,6 +380,38 @@ def build_smart_pick_audit(candidate_row: pd.Series) -> pd.DataFrame:
     return audit_df
 
 
+def build_smart_history_comparison(candidate_row: pd.Series) -> pd.DataFrame:
+    if candidate_row is None or candidate_row.empty:
+        return pd.DataFrame()
+
+    comparison_rows = [
+        {
+            "memory_type": "Market",
+            "full_history": candidate_row.get("market_blended_hit_rate"),
+            "recent_form": candidate_row.get("recent_market_blended_hit_rate"),
+            "full_sample": candidate_row.get("market_picks"),
+            "recent_sample": candidate_row.get("recent_market_picks"),
+            "full_roi": candidate_row.get("market_blended_roi_per_pick"),
+            "recent_roi": candidate_row.get("recent_market_blended_roi_per_pick"),
+        },
+        {
+            "memory_type": "Sportsbook",
+            "full_history": candidate_row.get("sportsbook_blended_hit_rate"),
+            "recent_form": candidate_row.get("recent_sportsbook_blended_hit_rate"),
+            "full_sample": candidate_row.get("sportsbook_picks"),
+            "recent_sample": candidate_row.get("recent_sportsbook_picks"),
+            "full_roi": candidate_row.get("sportsbook_blended_roi_per_pick"),
+            "recent_roi": candidate_row.get("recent_sportsbook_blended_roi_per_pick"),
+        },
+    ]
+    comparison_df = pd.DataFrame(comparison_rows)
+    for column in ["full_history", "recent_form", "full_roi", "recent_roi"]:
+        comparison_df[column] = pd.to_numeric(comparison_df[column], errors="coerce")
+    for column in ["full_sample", "recent_sample"]:
+        comparison_df[column] = pd.to_numeric(comparison_df[column], errors="coerce").fillna(0).astype(int)
+    return comparison_df
+
+
 def score_smart_picks(
     candidates_df: pd.DataFrame,
     graded_df: pd.DataFrame,

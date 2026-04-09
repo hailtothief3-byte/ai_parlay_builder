@@ -153,7 +153,7 @@ from services.results_service import (
 from services.research import ResearchService
 from services.settings_manager import reload_runtime_modules, upsert_env_values
 from services.smart_parlay_profile_service import build_smart_parlay_profiles
-from services.smart_pick_service import apply_smart_weight_overrides, build_smart_learning_tables, build_smart_pick_audit, build_smart_weight_profile, score_smart_picks
+from services.smart_pick_service import apply_smart_weight_overrides, build_smart_history_comparison, build_smart_learning_tables, build_smart_pick_audit, build_smart_weight_profile, score_smart_picks
 from services.stats_service import (
     build_stats_template,
     get_latest_stats_snapshots,
@@ -4083,6 +4083,27 @@ with tab2:
                 audit_metric_col4.metric("History picks used", f"{int(audit_row.get('history_picks_used', 0) or 0)}")
                 st.caption(str(audit_row.get("smart_summary") or ""))
 
+                history_compare_df = build_smart_history_comparison(audit_row)
+                if not history_compare_df.empty:
+                    st.markdown("#### Full History vs Recent Form")
+                    history_compare_display = history_compare_df.copy()
+                    history_compare_display["full_history"] = (pd.to_numeric(history_compare_display["full_history"], errors="coerce") * 100).round(1)
+                    history_compare_display["recent_form"] = (pd.to_numeric(history_compare_display["recent_form"], errors="coerce") * 100).round(1)
+                    history_compare_display["full_roi"] = pd.to_numeric(history_compare_display["full_roi"], errors="coerce").round(2)
+                    history_compare_display["recent_roi"] = pd.to_numeric(history_compare_display["recent_roi"], errors="coerce").round(2)
+                    history_compare_display = history_compare_display.rename(
+                        columns={
+                            "memory_type": "Memory Type",
+                            "full_history": "Full Hit Rate %",
+                            "recent_form": "Recent Hit Rate %",
+                            "full_sample": "Full Picks",
+                            "recent_sample": "Recent Picks",
+                            "full_roi": "Full Units/Pick",
+                            "recent_roi": "Recent Units/Pick",
+                        }
+                    )
+                    st.dataframe(compact_numeric_table(history_compare_display), use_container_width=True, hide_index=True)
+
                 audit_df = build_smart_pick_audit(audit_row)
                 if not audit_df.empty:
                     st.dataframe(
@@ -4413,6 +4434,26 @@ with tab3:
                         parlay_audit_col3.metric("Tier", str(selected_parlay_audit.get("smart_tier") or "N/A"))
                         parlay_audit_col4.metric("History picks", f"{int(selected_parlay_audit.get('history_picks_used', 0) or 0)}")
                         st.caption(str(selected_parlay_audit.get("smart_summary") or ""))
+                        parlay_history_compare = build_smart_history_comparison(selected_parlay_audit)
+                        if not parlay_history_compare.empty:
+                            st.markdown("##### Full History vs Recent Form")
+                            parlay_history_display = parlay_history_compare.copy()
+                            parlay_history_display["full_history"] = (pd.to_numeric(parlay_history_display["full_history"], errors="coerce") * 100).round(1)
+                            parlay_history_display["recent_form"] = (pd.to_numeric(parlay_history_display["recent_form"], errors="coerce") * 100).round(1)
+                            parlay_history_display["full_roi"] = pd.to_numeric(parlay_history_display["full_roi"], errors="coerce").round(2)
+                            parlay_history_display["recent_roi"] = pd.to_numeric(parlay_history_display["recent_roi"], errors="coerce").round(2)
+                            parlay_history_display = parlay_history_display.rename(
+                                columns={
+                                    "memory_type": "Memory Type",
+                                    "full_history": "Full Hit Rate %",
+                                    "recent_form": "Recent Hit Rate %",
+                                    "full_sample": "Full Picks",
+                                    "recent_sample": "Recent Picks",
+                                    "full_roi": "Full Units/Pick",
+                                    "recent_roi": "Recent Units/Pick",
+                                }
+                            )
+                            st.dataframe(compact_numeric_table(parlay_history_display), use_container_width=True, hide_index=True)
                         st.dataframe(
                             compact_numeric_table(
                                 build_smart_pick_audit(selected_parlay_audit).rename(
