@@ -1756,6 +1756,10 @@ def set_dashboard_focus(target: str) -> None:
     st.session_state["dashboard_focus_target"] = target
 
 
+def set_results_grading_focus(target: str) -> None:
+    st.session_state["results_grading_section_focus_target"] = target
+
+
 def sync_view_preference_state(sport_label: str, session_key: str, preference_key: str, default: str) -> None:
     if session_key not in st.session_state:
         st.session_state[session_key] = get_view_preference(sport_label, preference_key, default)
@@ -3932,6 +3936,7 @@ with tab4:
 with tab5:
     render_section_header("Results & Grading", "Resolve props, review bankroll movement, and compare actual outcomes against model expectations.")
     focus_target = st.session_state.get("dashboard_focus_target")
+    results_focus_target = st.session_state.get("results_grading_section_focus_target")
     if focus_target == "results_grading":
         st.success("Notification focus is set to Results & Grading. Review unresolved picks, saved tickets, and recent settlement status here.")
     elif focus_target == "bankroll_journal":
@@ -3954,6 +3959,7 @@ with tab5:
             "Detail": f"{len(tracked_df)} tracked" if not tracked_df.empty else "Save live edges for grading to begin this queue.",
             "ActionLabel": "Open Edge Scanner" if tracked_df.empty else "Open Results & Grading",
             "ActionTarget": "edge_scanner" if tracked_df.empty else "results_grading",
+            "ActionSectionTarget": "ungraded_tracked_picks" if not tracked_df.empty else "",
         },
         {
             "Workflow": "Settlement queue",
@@ -3965,6 +3971,7 @@ with tab5:
             ),
             "ActionLabel": "Review Settlements" if not unresolved_tracked_df.empty else "Stay Clear",
             "ActionTarget": "results_grading",
+            "ActionSectionTarget": "enter_settled_result",
         },
         {
             "Workflow": "Saved tickets",
@@ -3976,6 +3983,7 @@ with tab5:
             ),
             "ActionLabel": "Open Results & Grading" if not ticket_summary_df.empty else "Open Parlay Lab",
             "ActionTarget": "results_grading" if not ticket_summary_df.empty else "parlay_lab",
+            "ActionSectionTarget": "saved_tickets" if not ticket_summary_df.empty else "",
         },
         {
             "Workflow": "Bankroll journal",
@@ -3987,10 +3995,12 @@ with tab5:
             ),
             "ActionLabel": "Open Bankroll Journal",
             "ActionTarget": "bankroll_journal",
+            "ActionSectionTarget": "bankroll_journal",
         },
     ]
 
     st.markdown("### Workflow Status")
+    st.caption("Use the action buttons below each workflow card to jump into the relevant queue or journal.")
     status_tones = (
         {
             "Ready": {"bg": "#0f2b1f", "fg": "#8ee3b7", "border": "#1f6b4f", "card": "#0f1722", "title": "#e5eef8", "body": "#a7b6c8"},
@@ -4041,6 +4051,10 @@ with tab5:
         if row.get("ActionLabel"):
             if status_cols[idx].button(row["ActionLabel"], key=f"results_status_action_{idx}", use_container_width=True):
                 set_dashboard_focus(str(row["ActionTarget"]))
+                if str(row.get("ActionTarget") or "") == "results_grading" and str(row.get("ActionSectionTarget") or "").strip():
+                    set_results_grading_focus(str(row["ActionSectionTarget"]))
+                elif str(row.get("ActionTarget") or "") == "bankroll_journal":
+                    set_results_grading_focus("bankroll_journal")
                 st.rerun()
 
 
@@ -4464,6 +4478,8 @@ with tab5:
             st.caption(" | ".join(summary_bits))
 
     st.markdown("### Bankroll Journal")
+    if results_focus_target == "bankroll_journal":
+        st.info("Workflow jump is focused on Bankroll Journal below.")
     journal_col1, journal_col2, journal_col3, journal_col4 = st.columns(4)
     journal_col1.metric("Starting Bankroll", f"${bankroll_summary['starting_bankroll']}")
     journal_col2.metric("Open Risk", f"${bankroll_summary['open_risk']}")
@@ -4612,6 +4628,8 @@ with tab5:
             selection_map[label] = row.to_dict()
 
     st.markdown("### Enter Settled Result")
+    if results_focus_target == "enter_settled_result":
+        st.info("Workflow jump is focused on the settlement queue. Enter or sync results below.")
     selected_pick_label = st.selectbox(
         "Tracked pick",
         [""] + selection_options,
@@ -4642,6 +4660,8 @@ with tab5:
             st.success("Saved settled result.")
 
     st.markdown("### Ungraded Tracked Picks")
+    if results_focus_target == "ungraded_tracked_picks":
+        st.info("Workflow jump is focused on tracked picks waiting for review.")
     if ungraded_df.empty:
         render_empty_state(
             "No ungraded tracked picks",
@@ -4808,6 +4828,8 @@ with tab5:
             st.error(str(exc))
 
     st.markdown("### Saved Tickets")
+    if results_focus_target == "saved_tickets":
+        st.info("Workflow jump is focused on saved tickets and ticket review.")
     ticket_summary_df = get_ticket_summary_with_grades(sport_label)
     if ticket_summary_df.empty:
         render_empty_state(
