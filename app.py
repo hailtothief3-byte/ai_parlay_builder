@@ -531,6 +531,7 @@ def build_overview_next_step_cards(
     overview_unresolved_tracked: pd.DataFrame,
     overview_graded: pd.DataFrame,
     overview_journal: pd.DataFrame,
+    source_summary_df: pd.DataFrame,
     weekly_review: dict[str, object],
     monthly_review: dict[str, object],
     sport_label: str,
@@ -550,6 +551,7 @@ def build_overview_next_step_cards(
     review_ready = not overview_graded.empty
     positive_trend = weekly_units > 0 and monthly_units >= 0
     cooling_trend = weekly_units < 0 or monthly_units < 0 or weekly_hit_delta < -0.04
+    source_summary_df = source_summary_df.copy() if isinstance(source_summary_df, pd.DataFrame) else pd.DataFrame()
 
     def confidence_label(level: str) -> str:
         return level
@@ -655,7 +657,99 @@ def build_overview_next_step_cards(
                 "body": f"Weekly and monthly review are both supportive right now, so this is a healthier stretch to trust the current smart mix and let the strongest {sport_prefix.lower()}workflows do more of the lifting.",
             }
         )
+
+    if not source_summary_df.empty and "source" in source_summary_df.columns:
+        auto_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_auto"].head(1)
+        manual_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_manual"].head(1)
+        legacy_row = source_summary_df[source_summary_df["source"] == "edge_scanner"].head(1)
+        source_card = None
+        if not auto_row.empty and not legacy_row.empty:
+            auto_units = float(auto_row.iloc[0].get("roi_per_pick", 0.0) or 0.0)
+            legacy_units = float(legacy_row.iloc[0].get("roi_per_pick", 0.0) or 0.0)
+            if auto_units > legacy_units + 0.08:
+                source_card = {
+                    "title": "Auto Smart Is Leading Today",
+                    "status": "source edge",
+                    "confidence": confidence_label("Medium Confidence"),
+                    "body": f"Smart Pick Engine (Auto) is outperforming Edge Scanner by {auto_units - legacy_units:+.2f} units per pick in graded history, so it is the stronger default workflow right now.",
+                }
+        if source_card is None and not manual_row.empty and not auto_row.empty:
+            manual_units = float(manual_row.iloc[0].get("roi_per_pick", 0.0) or 0.0)
+            auto_units = float(auto_row.iloc[0].get("roi_per_pick", 0.0) or 0.0)
+            if manual_units > auto_units + 0.08:
+                source_card = {
+                    "title": "Manual Smart Has The Edge",
+                    "status": "source edge",
+                    "confidence": confidence_label("Medium Confidence"),
+                    "body": f"Smart Pick Engine (Manual) is ahead of Auto by {manual_units - auto_units:+.2f} units per pick, so manual tuning is still earning its keep for this board.",
+                }
+        if source_card is None and not legacy_row.empty and legacy_row.iloc[0].get("picks", 0):
+            source_card = {
+                "title": "Legacy Scanner Still Matters",
+                "status": "source watch",
+                "confidence": confidence_label("Low Confidence"),
+                "body": f"{format_source_label(str(legacy_row.iloc[0].get('source') or 'edge_scanner'))} still has meaningful graded history here, so keep comparing it against the smart workflows before going all-in on one lane.",
+            }
+        if source_card is not None:
+            cards.insert(1, source_card)
     return cards[:3]
+
+
+def build_overview_operating_mode(
+    source_summary_df: pd.DataFrame,
+    weekly_review: dict[str, object],
+    monthly_review: dict[str, object],
+    sport_label: str,
+    is_dfs: bool,
+    overview_watchlist_alerts: pd.DataFrame,
+    overview_unresolved_tracked: pd.DataFrame,
+    overview_edges: pd.DataFrame,
+) -> dict[str, str]:
+    weekly_current = dict(weekly_review.get("current_summary") or {})
+    monthly_current = dict(monthly_review.get("current_summary") or {})
+    weekly_prior = dict(weekly_review.get("prior_summary") or {})
+    weekly_units = float(weekly_current.get("profit_units", 0.0) or 0.0)
+    monthly_units = float(monthly_current.get("profit_units", 0.0) or 0.0)
+    weekly_hit_delta = float(weekly_current.get("hit_rate", 0.0) or 0.0) - float(weekly_prior.get("hit_rate", 0.0) or 0.0)
+    sport_prefix = f"{sport_label} " if str(sport_label).strip() else ""
+    build_label = "DFS builder" if is_dfs else "sportsbook builder"
+    default_workflow = "Edge Scanner"
+    confidence = "Medium Confidence"
+    status = "Balanced Mode"
+    body = f"The current {sport_prefix.lower()}operating mode is balanced. Start in Edge Scanner, then move into {build_label} once a few clean candidates surface."
+
+    if not overview_unresolved_tracked.empty:
+        default_workflow = "Results & Grading"
+        confidence = "High Confidence"
+        status = "Queue First"
+        body = f"{len(overview_unresolved_tracked)} tracked {sport_prefix.lower()}pick(s) are still waiting for settlement, so Results & Grading should come first before expanding the next build cycle."
+    elif weekly_units > 0 and monthly_units >= 0 and not overview_watchlist_alerts.empty:
+        default_workflow = "Parlay Lab"
+        confidence = "High Confidence"
+        status = "Press The Edge"
+        body = f"Weekly and monthly trend are both supportive, and {len(overview_watchlist_alerts)} watchlist alert(s) are live. {build_label.title()} is the strongest first workflow right now."
+    elif weekly_units < 0 or monthly_units < 0 or weekly_hit_delta < -0.04:
+        default_workflow = "Backtest"
+        confidence = "Medium Confidence"
+        status = "Selective Mode"
+        body = f"The recent {sport_prefix.lower()}trend is cooling, so Backtest and review are the best first stop before forcing new volume."
+    elif overview_edges.empty:
+        default_workflow = "Live Board"
+        confidence = "High Confidence"
+        status = "Setup Mode"
+        body = f"The {sport_prefix.lower()}edge pool is still thin, so Live Board is the right starting point for checking market coverage and sync health."
+
+    if isinstance(source_summary_df, pd.DataFrame) and not source_summary_df.empty and "source" in source_summary_df.columns:
+        top_source = str(source_summary_df.iloc[0].get("source") or "")
+        if top_source:
+            body = f"{body} Current workflow leader: {format_source_label(top_source)}."
+
+    return {
+        "title": f"Today's Operating Mode: {status}",
+        "confidence": confidence,
+        "default_workflow": default_workflow,
+        "body": body,
+    }
 
 
 def build_watchlist_alert_reason(row: pd.Series, threshold_edge_pct: float, threshold_confidence: float) -> str:
@@ -2981,6 +3075,7 @@ with tab0:
     overview_smart_edges, overview_smart_summary = score_smart_picks(overview_edges, overview_graded, override_profile=manual_smart_weight_overrides)
     overview_weekly_review = build_weekly_model_review(overview_graded)
     overview_monthly_review = build_monthly_model_review(overview_graded)
+    overview_source_summary = build_true_source_summary(overview_graded)
     overview_journal = get_journal_entries(sport_label)
     overview_bankroll = build_bankroll_summary(overview_journal, bankroll_amount)
     overview_kpis = build_bankroll_kpis(overview_journal, bankroll_amount)
@@ -3000,6 +3095,50 @@ with tab0:
 
     st.markdown("### Coach Mode")
     st.info(build_coach_mode_summary(overview_weekly_review, overview_monthly_review, sport_label=sport_label))
+    overview_operating_mode = build_overview_operating_mode(
+        source_summary_df=overview_source_summary,
+        weekly_review=overview_weekly_review,
+        monthly_review=overview_monthly_review,
+        sport_label=sport_label,
+        is_dfs=is_dfs,
+        overview_watchlist_alerts=overview_watchlist_alerts,
+        overview_unresolved_tracked=overview_unresolved_tracked,
+        overview_edges=overview_edges,
+    )
+    st.markdown("### Today's Operating Mode")
+    st.markdown(
+        f"""
+        <div style="
+            background: {theme['card_bg']};
+            border: 1px solid {theme['card_border']};
+            border-radius: 20px;
+            padding: 1rem 1.1rem;
+            margin: 0 0 0.8rem;
+            box-shadow: 0 10px 24px rgba(8, 15, 28, 0.08);
+        ">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+                <div style="font-size:1.02rem;font-weight:700;color:{theme['heading_text']};">{overview_operating_mode['title']}</div>
+                <div style="
+                    padding:0.22rem 0.7rem;
+                    border-radius:999px;
+                    border:1px solid {theme['card_border']};
+                    color:{theme['section_subtitle']};
+                    font-size:0.78rem;
+                    font-weight:700;
+                    letter-spacing:0.03em;
+                    text-transform:uppercase;
+                ">{overview_operating_mode['confidence']}</div>
+            </div>
+            <div style="margin-top:0.55rem;color:{theme['body_text']};line-height:1.5;">
+                {overview_operating_mode['body']}
+            </div>
+            <div style="margin-top:0.6rem;color:{theme['section_subtitle']};font-weight:700;">
+                Suggested default workflow: {overview_operating_mode['default_workflow']}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     overview_next_step_cards = build_overview_next_step_cards(
         overview_board=overview_board,
         overview_edges=overview_edges,
@@ -3008,6 +3147,7 @@ with tab0:
         overview_unresolved_tracked=overview_unresolved_tracked,
         overview_graded=overview_graded,
         overview_journal=overview_journal,
+        source_summary_df=overview_source_summary,
         weekly_review=overview_weekly_review,
         monthly_review=overview_monthly_review,
         sport_label=sport_label,
