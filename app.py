@@ -19,10 +19,88 @@ from services.dfs_slip_service import (
     get_dfs_slip_adapters,
     recommend_dfs_slip_adapter,
 )
-from services.analytics import build_calibration_summary, build_clv_backtest, build_experiment_snapshot, build_ticket_benchmark_summary, build_ticket_review_insights, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary
 try:
-    from services.analytics import build_coach_mode_summary, build_model_recommendation_cards, build_monthly_model_review, build_review_action_checklist, build_weekly_model_review
+    from services.analytics import (
+        build_calibration_summary,
+        build_clv_backtest,
+        build_coach_mode_summary,
+        build_experiment_snapshot,
+        build_model_recommendation_cards,
+        build_monthly_model_review,
+        build_review_action_checklist,
+        build_ticket_benchmark_summary,
+        build_ticket_review_insights,
+        build_true_backtest,
+        build_true_calibration_summary,
+        build_true_confidence_summary,
+        build_true_market_summary,
+        build_true_source_summary,
+        build_true_source_timeseries,
+        build_true_sportsbook_summary,
+        build_weekly_model_review,
+    )
 except ImportError:
+    def build_calibration_summary(backtest_df: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def build_clv_backtest(sport_keys: list[str] | str) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def build_experiment_snapshot(
+        graded_df: pd.DataFrame,
+        source_summary_df: pd.DataFrame,
+        rolling_window: int = 10,
+    ) -> dict[str, object]:
+        return {
+            "graded_pick_count": int(len(graded_df)) if not graded_df.empty else 0,
+            "source_summary": [],
+            "recent_experiments": [],
+            "cumulative_units": [],
+            "rolling_hit_rate": [],
+        }
+
+    def build_ticket_benchmark_summary(graded_picks_df: pd.DataFrame, leg_count: int) -> dict[str, float | int | None]:
+        return {
+            "benchmark_hit_rate": None,
+            "benchmark_profit_units": None,
+            "benchmark_avg_confidence": None,
+            "benchmark_avg_model_prob": None,
+            "benchmark_sample_size": 0,
+            "leg_count": int(leg_count or 0),
+        }
+
+    def build_ticket_review_insights(
+        ticket_row: dict[str, object] | pd.Series,
+        benchmark: dict[str, object],
+        overlap_count: int,
+        current_benchmark: pd.DataFrame,
+    ) -> list[dict[str, str]]:
+        return []
+
+    def build_true_backtest(sport_keys: list[str] | str) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def build_true_calibration_summary(backtest_df: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def build_true_confidence_summary(backtest_df: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def build_true_market_summary(backtest_df: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def build_true_source_summary(backtest_df: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def build_true_source_timeseries(
+        backtest_df: pd.DataFrame,
+        rolling_window: int = 10,
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        return pd.DataFrame(), pd.DataFrame()
+
+    def build_true_sportsbook_summary(backtest_df: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame()
+
     def build_weekly_model_review(graded_df: pd.DataFrame) -> dict[str, object]:
         return {
             "current_window_label": "Last 7 days",
