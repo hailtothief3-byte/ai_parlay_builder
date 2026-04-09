@@ -357,39 +357,30 @@ def render_shell_header(sport_label: str, provider: str, board_type: str, sync_e
         if last_sync is not None
         else "No recent sync"
     )
-    st.markdown(
-        f"""
-        <div class="app-hero">
-            <div class="app-hero__brand">
-                <img class="app-hero__brandmark" src="{BRANDMARK_DATA_URI}" alt="AI Parlay Builder brandmark" />
-                <div>
-            <div class="app-hero__eyebrow">AI Parlay Builder</div>
-            <div class="app-hero__title">Sharper prop workflows for {sport_label}</div>
-            <div class="app-hero__subtitle">
-                Live odds, projection building, grading, bankroll tracking, and ticket planning in one workspace.
-            </div>
-                </div>
-            </div>
-            <div class="app-hero__meta">
-                <span class="hero-pill">Provider: {provider}</span>
-                <span class="hero-pill">Board: {board_type}</span>
-                <span class="hero-pill">{sync_text}</span>
-                <span class="hero-pill">Last sync: {last_sync_text}</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    hero_markup = (
+        f'<div class="app-hero">'
+        f'<div class="app-hero__brand">'
+        f'<img class="app-hero__brandmark" src="{BRANDMARK_DATA_URI}" alt="AI Parlay Builder brandmark" />'
+        f'<div>'
+        f'<div class="app-hero__eyebrow">AI Parlay Builder</div>'
+        f'<div class="app-hero__title">Sharper prop workflows for {sport_label}</div>'
+        f'<div class="app-hero__subtitle">Live odds, projection building, grading, bankroll tracking, and ticket planning in one workspace.</div>'
+        f'</div>'
+        f'</div>'
+        f'<div class="app-hero__meta">'
+        f'<span class="hero-pill">Provider: {provider}</span>'
+        f'<span class="hero-pill">Board: {board_type}</span>'
+        f'<span class="hero-pill">{sync_text}</span>'
+        f'<span class="hero-pill">Last sync: {last_sync_text}</span>'
+        f'</div>'
+        f'</div>'
     )
+    st.markdown(hero_markup, unsafe_allow_html=True)
 
 
 def render_section_header(title: str, subtitle: str) -> None:
     st.markdown(
-        f"""
-        <div class="section-header">
-            <div class="section-header__title">{title}</div>
-            <div class="section-header__subtitle">{subtitle}</div>
-        </div>
-        """,
+        f'<div class="section-header"><div class="section-header__title">{title}</div><div class="section-header__subtitle">{subtitle}</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -409,21 +400,13 @@ def render_empty_state(title: str, body: str, tone: str = "neutral") -> None:
         }
     )
     text_color, bg_color, border_color = tone_map.get(tone, tone_map["neutral"])
-    st.markdown(
-        f"""
-        <div style="
-            background:{bg_color};
-            border:1px solid {border_color};
-            border-radius:18px;
-            padding:1rem 1.05rem;
-            margin:0.2rem 0 0.8rem;
-        ">
-            <div style="font-size:0.98rem;font-weight:800;color:{text_color};margin-bottom:0.2rem;">{title}</div>
-            <div style="font-size:0.92rem;color:{text_color};opacity:0.92;line-height:1.5;">{body}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    empty_markup = (
+        f'<div style="background:{bg_color};border:1px solid {border_color};border-radius:18px;padding:1rem 1.05rem;margin:0.2rem 0 0.8rem;">'
+        f'<div style="font-size:0.98rem;font-weight:800;color:{text_color};margin-bottom:0.2rem;">{title}</div>'
+        f'<div style="font-size:0.92rem;color:{text_color};opacity:0.92;line-height:1.5;">{body}</div>'
+        f'</div>'
     )
+    st.markdown(empty_markup, unsafe_allow_html=True)
 
 
 def render_workflow_check_item(title: str, ok: bool, detail: str) -> None:
@@ -442,31 +425,16 @@ def render_workflow_check_item(title: str, ok: bool, detail: str) -> None:
         title_color = "#1f2937"
         detail_color = "#6b7280"
     badge_label = "Ready" if ok else "Pending"
-    st.markdown(
-        f"""
-        <div style="
-            background: {card_bg};
-            border: 1px solid {border};
-            border-radius: 16px;
-            padding: 0.85rem 0.95rem;
-            margin-bottom: 0.55rem;
-        ">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;">
-                <div style="font-size:0.95rem;font-weight:800;color:{title_color};">{title}</div>
-                <span style="
-                    background:{badge_bg};
-                    color:{badge_text};
-                    border-radius:999px;
-                    padding:0.22rem 0.55rem;
-                    font-size:0.78rem;
-                    font-weight:700;
-                ">{badge_label}</span>
-            </div>
-            <div style="margin-top:0.3rem;font-size:0.88rem;color:{detail_color};line-height:1.45;">{detail}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    workflow_markup = (
+        f'<div style="background:{card_bg};border:1px solid {border};border-radius:16px;padding:0.85rem 0.95rem;margin-bottom:0.55rem;">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;">'
+        f'<div style="font-size:0.95rem;font-weight:800;color:{title_color};">{title}</div>'
+        f'<span style="background:{badge_bg};color:{badge_text};border-radius:999px;padding:0.22rem 0.55rem;font-size:0.78rem;font-weight:700;">{badge_label}</span>'
+        f'</div>'
+        f'<div style="margin-top:0.3rem;font-size:0.88rem;color:{detail_color};line-height:1.45;">{detail}</div>'
+        f'</div>'
     )
+    st.markdown(workflow_markup, unsafe_allow_html=True)
 
 
 def format_freshness_label(raw_ts) -> str:
@@ -944,25 +912,23 @@ def render_watchlist_alert_card(row: pd.Series) -> None:
     recommended_units = float(row.get("recommended_units", 0.0) or 0.0)
     freshness_label = format_freshness_label(row.get("pulled_at") or row.get("last_update"))
     player_label = row.get("player_display") or row.get("player", "Unknown")
-    st.markdown(
-        f"""
-        <div class="watchlist-alert-card">
-            <div class="watchlist-alert-card__title">{player_label} - {row.get("market", "")}</div>
-            <div class="watchlist-alert-card__subtitle">{row.get("pick", "")} | {row.get("sportsbook", "")}</div>
-            <div class="watchlist-alert-card__metrics">
-                <div><span>Edge</span><strong>{edge_pct:.2f}%</strong></div>
-                <div><span>Confidence</span><strong>{confidence:.1f}</strong></div>
-                <div><span>Stake</span><strong>{recommended_units:.2f}u</strong></div>
-            </div>
-            <div class="watchlist-alert-card__signals">
-                <span style="background:{line_bg};color:{line_text_color};">Line: {line_label}</span>
-                <span style="background:{price_bg};color:{price_text_color};">Price: {price_label}</span>
-            </div>
-            <div class="watchlist-alert-card__freshness">{freshness_label}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    watchlist_markup = (
+        f'<div class="watchlist-alert-card">'
+        f'<div class="watchlist-alert-card__title">{player_label} - {row.get("market", "")}</div>'
+        f'<div class="watchlist-alert-card__subtitle">{row.get("pick", "")} | {row.get("sportsbook", "")}</div>'
+        f'<div class="watchlist-alert-card__metrics">'
+        f'<div><span>Edge</span><strong>{edge_pct:.2f}%</strong></div>'
+        f'<div><span>Confidence</span><strong>{confidence:.1f}</strong></div>'
+        f'<div><span>Stake</span><strong>{recommended_units:.2f}u</strong></div>'
+        f'</div>'
+        f'<div class="watchlist-alert-card__signals">'
+        f'<span style="background:{line_bg};color:{line_text_color};">Line: {line_label}</span>'
+        f'<span style="background:{price_bg};color:{price_text_color};">Price: {price_label}</span>'
+        f'</div>'
+        f'<div class="watchlist-alert-card__freshness">{freshness_label}</div>'
+        f'</div>'
     )
+    st.markdown(watchlist_markup, unsafe_allow_html=True)
 
 
 def render_watchlist_alert_card_with_reason(row: pd.Series, threshold_edge_pct: float, threshold_confidence: float) -> None:
@@ -1065,37 +1031,16 @@ def render_notification_notice(notice: dict, key_suffix: str, sport_label: str) 
         if theme_mode == "Dark"
         else {"fg": "#374151", "bg": "#f3f4f6", "border": "#e5e7eb", "pill_bg": "#ffffff", "pill_text": "#374151"},
     )
-    st.markdown(
-        f"""
-        <div style="
-            background:{tone['bg']};
-            border:1px solid {tone['border']};
-            color:{tone['fg']};
-            border-radius:18px;
-            padding:0.9rem 1rem;
-            margin-bottom:0.6rem;
-            box-shadow:0 14px 30px rgba(2, 8, 23, 0.16);
-        ">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:0.8rem;margin-bottom:0.35rem;">
-                <div style="font-size:0.95rem;font-weight:800;">{notice['title']}</div>
-                <span style="
-                    display:inline-block;
-                    padding:0.24rem 0.55rem;
-                    border-radius:999px;
-                    background:{tone['pill_bg']};
-                    color:{tone['pill_text']};
-                    font-size:0.74rem;
-                    font-weight:800;
-                    text-transform:uppercase;
-                    letter-spacing:0.05em;
-                    white-space:nowrap;
-                ">{str(notice.get('severity') or 'low')}</span>
-            </div>
-            <div style="font-size:0.9rem;line-height:1.5;opacity:0.96;">{notice['message']}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    notice_markup = (
+        f'<div style="background:{tone["bg"]};border:1px solid {tone["border"]};color:{tone["fg"]};border-radius:18px;padding:0.9rem 1rem;margin-bottom:0.6rem;box-shadow:0 14px 30px rgba(2, 8, 23, 0.16);">'
+        f'<div style="display:flex;align-items:center;justify-content:space-between;gap:0.8rem;margin-bottom:0.35rem;">'
+        f'<div style="font-size:0.95rem;font-weight:800;">{notice["title"]}</div>'
+        f'<span style="display:inline-block;padding:0.24rem 0.55rem;border-radius:999px;background:{tone["pill_bg"]};color:{tone["pill_text"]};font-size:0.74rem;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">{str(notice.get("severity") or "low")}</span>'
+        f'</div>'
+        f'<div style="font-size:0.9rem;line-height:1.5;opacity:0.96;">{notice["message"]}</div>'
+        f'</div>'
     )
+    st.markdown(notice_markup, unsafe_allow_html=True)
     action_col, snooze_col, dismiss_col = st.columns([1.3, 1, 1])
     if notice.get("action_label") and notice.get("action_target"):
         if action_col.button(str(notice["action_label"]), key=f"notice_action_{key_suffix}", use_container_width=True):
