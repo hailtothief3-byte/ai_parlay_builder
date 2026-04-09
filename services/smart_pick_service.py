@@ -199,6 +199,20 @@ def build_smart_weight_profile(graded_df: pd.DataFrame) -> dict[str, float | int
     }
 
 
+def apply_smart_weight_overrides(base_profile: dict[str, float | int | str], override_profile: dict[str, float] | None = None) -> dict[str, float | int | str]:
+    resolved = dict(base_profile)
+    if not override_profile:
+        return resolved
+
+    for key, value in override_profile.items():
+        if key in resolved and value is not None:
+            resolved[key] = float(value)
+
+    resolved["profile_mode"] = "manual_override"
+    resolved["profile_reason"] = "Manual smart-engine overrides are active, so scoring is using your preferred weighting mix instead of the pure auto-tuned profile."
+    return resolved
+
+
 def build_smart_learning_tables(graded_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     profile = build_smart_pick_profile(graded_df)
     weight_profile = build_smart_weight_profile(graded_df)
@@ -314,12 +328,16 @@ def build_smart_pick_audit(candidate_row: pd.Series) -> pd.DataFrame:
     return audit_df
 
 
-def score_smart_picks(candidates_df: pd.DataFrame, graded_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float | int]]:
+def score_smart_picks(
+    candidates_df: pd.DataFrame,
+    graded_df: pd.DataFrame,
+    override_profile: dict[str, float] | None = None,
+) -> tuple[pd.DataFrame, dict[str, float | int]]:
     if candidates_df.empty:
         return pd.DataFrame(), _empty_summary()
 
     profile = build_smart_pick_profile(graded_df)
-    weight_profile = build_smart_weight_profile(graded_df)
+    weight_profile = apply_smart_weight_overrides(build_smart_weight_profile(graded_df), override_profile)
     summary = profile["summary"]
     scored = _coerce_numeric(
         candidates_df,

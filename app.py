@@ -41,7 +41,7 @@ from services.results_service import (
 from services.research import ResearchService
 from services.settings_manager import reload_runtime_modules, upsert_env_values
 from services.smart_parlay_profile_service import build_smart_parlay_profiles
-from services.smart_pick_service import build_smart_learning_tables, build_smart_pick_audit, score_smart_picks
+from services.smart_pick_service import apply_smart_weight_overrides, build_smart_learning_tables, build_smart_pick_audit, build_smart_weight_profile, score_smart_picks
 from services.stats_service import (
     build_stats_template,
     get_latest_stats_snapshots,
@@ -1290,6 +1290,18 @@ def render_smart_parlay_profile_panel(
         st.rerun()
 
 
+def get_manual_smart_weight_overrides() -> dict[str, float] | None:
+    enabled = bool(st.session_state.get("smart_weights_override_enabled", False))
+    if not enabled:
+        return None
+    return {
+        "model_score_weight": float(st.session_state.get("smart_model_weight", 0.42)),
+        "confidence_score_weight": float(st.session_state.get("smart_confidence_weight", 0.28)),
+        "edge_multiplier": float(st.session_state.get("smart_edge_multiplier", 1.45)),
+        "history_market_weight": float(st.session_state.get("smart_history_market_weight", 0.36)),
+    }
+
+
 def build_watchlist_option_labels(df: pd.DataFrame) -> dict[str, int]:
     option_labels = {}
     for idx, row in df.iterrows():
@@ -1827,6 +1839,12 @@ selector_col1, selector_col2, selector_col3 = st.columns([1.1, 0.95, 0.8])
 sport_labels = get_sport_labels()
 app_sport_session_key = "selected_sport_label"
 sync_view_preference_state("__app__", app_sport_session_key, "selected_sport_label", sport_labels[0])
+sync_bool_view_preference_state("__app__", "smart_weights_override_enabled", "smart_weights_override_enabled", False)
+sync_typed_view_preference_state("__app__", "smart_model_weight", "smart_model_weight", 0.42, float)
+sync_typed_view_preference_state("__app__", "smart_confidence_weight", "smart_confidence_weight", 0.28, float)
+sync_typed_view_preference_state("__app__", "smart_edge_multiplier", "smart_edge_multiplier", 1.45, float)
+sync_typed_view_preference_state("__app__", "smart_history_market_weight", "smart_history_market_weight", 0.36, float)
+manual_smart_weight_overrides = get_manual_smart_weight_overrides()
 with selector_col1:
     st.markdown('<div class="top-select-label">Sport</div>', unsafe_allow_html=True)
     sport_label = st.selectbox(
@@ -2323,7 +2341,7 @@ with tab0:
     overview_tracked = get_tracked_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
     overview_unresolved_tracked = get_unresolved_tracked_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
     overview_graded = get_graded_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
-    overview_smart_edges, overview_smart_summary = score_smart_picks(overview_edges, overview_graded)
+    overview_smart_edges, overview_smart_summary = score_smart_picks(overview_edges, overview_graded, override_profile=manual_smart_weight_overrides)
     overview_journal = get_journal_entries(sport_label)
     overview_bankroll = build_bankroll_summary(overview_journal, bankroll_amount)
     overview_kpis = build_bankroll_kpis(overview_journal, bankroll_amount)
@@ -2667,7 +2685,7 @@ with tab2:
         edge_df = annotate_watchlist_movement(edge_df, sport_label)
         edge_df = annotate_player_display(edge_df)
         edge_graded_history = get_graded_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
-        edge_df, edge_smart_summary = score_smart_picks(edge_df, edge_graded_history)
+        edge_df, edge_smart_summary = score_smart_picks(edge_df, edge_graded_history, override_profile=manual_smart_weight_overrides)
         edge_view_mode = st.radio(
             "Edge view",
             ["Compact", "Expanded"],
@@ -2896,7 +2914,7 @@ with tab3:
             edge_df = annotate_watchlist_movement(edge_df, sport_label)
             edge_df = annotate_player_display(edge_df)
             parlay_graded_history = get_graded_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
-            edge_df, _ = score_smart_picks(edge_df, parlay_graded_history)
+            edge_df, _ = score_smart_picks(edge_df, parlay_graded_history, override_profile=manual_smart_weight_overrides)
             parlay_view_mode = st.radio(
                 "Parlay table view",
                 ["Compact", "Expanded"],
@@ -3556,6 +3574,9 @@ with tab5:
     else:
         smart_summary_row = smart_learning_tables["summary"].iloc[0].to_dict() if not smart_learning_tables["summary"].empty else {}
         smart_weight_row = smart_learning_tables["weight_profile"].iloc[0].to_dict() if not smart_learning_tables.get("weight_profile", pd.DataFrame()).empty else {}
+        auto_weight_profile = build_smart_weight_profile(graded_df)
+        resolved_weight_profile = apply_smart_weight_overrides(auto_weight_profile, manual_smart_weight_overrides)
+        smart_weight_row = resolved_weight_profile
         smart_metric_col1, smart_metric_col2, smart_metric_col3 = st.columns(3)
         smart_metric_col1.metric("History picks", f"{int(smart_summary_row.get('history_picks', 0) or 0)}")
         smart_metric_col2.metric("Historical hit rate", f"{float(smart_summary_row.get('overall_hit_rate', 0.0) or 0.0) * 100:.1f}%")
@@ -3568,6 +3589,76 @@ with tab5:
         tune_col4.metric("Edge multiplier", f"{float(smart_weight_row.get('edge_multiplier', 1.45) or 1.45):.2f}")
         if smart_weight_row.get("profile_reason"):
             st.caption(str(smart_weight_row["profile_reason"]))
+
+        with st.expander("Smart Engine Overrides", expanded=False):
+            override_enabled = st.checkbox(
+                "Use manual smart-engine overrides",
+                key="smart_weights_override_enabled",
+                on_change=persist_view_preference_from_session,
+                args=("__app__", "smart_weights_override_enabled", "smart_weights_override_enabled"),
+            )
+            override_col1, override_col2 = st.columns(2)
+            override_col3, override_col4 = st.columns(2)
+            override_col1.slider(
+                "Model weight",
+                min_value=0.28,
+                max_value=0.60,
+                value=float(st.session_state.get("smart_model_weight", auto_weight_profile["model_score_weight"])),
+                step=0.01,
+                key="smart_model_weight",
+                on_change=persist_view_preference_from_session,
+                args=("__app__", "smart_model_weight", "smart_model_weight"),
+                disabled=not override_enabled,
+            )
+            override_col2.slider(
+                "Confidence weight",
+                min_value=0.20,
+                max_value=0.45,
+                value=float(st.session_state.get("smart_confidence_weight", auto_weight_profile["confidence_score_weight"])),
+                step=0.01,
+                key="smart_confidence_weight",
+                on_change=persist_view_preference_from_session,
+                args=("__app__", "smart_confidence_weight", "smart_confidence_weight"),
+                disabled=not override_enabled,
+            )
+            override_col3.slider(
+                "Edge multiplier",
+                min_value=1.00,
+                max_value=2.10,
+                value=float(st.session_state.get("smart_edge_multiplier", auto_weight_profile["edge_multiplier"])),
+                step=0.05,
+                key="smart_edge_multiplier",
+                on_change=persist_view_preference_from_session,
+                args=("__app__", "smart_edge_multiplier", "smart_edge_multiplier"),
+                disabled=not override_enabled,
+            )
+            override_col4.slider(
+                "Market history weight",
+                min_value=0.15,
+                max_value=0.60,
+                value=float(st.session_state.get("smart_history_market_weight", auto_weight_profile["history_market_weight"])),
+                step=0.01,
+                key="smart_history_market_weight",
+                on_change=persist_view_preference_from_session,
+                args=("__app__", "smart_history_market_weight", "smart_history_market_weight"),
+                disabled=not override_enabled,
+            )
+            compare_override_col1, compare_override_col2, compare_override_col3, compare_override_col4 = st.columns(4)
+            compare_override_col1.metric("Auto model", f"{float(auto_weight_profile['model_score_weight']):.2f}")
+            compare_override_col2.metric("Auto confidence", f"{float(auto_weight_profile['confidence_score_weight']):.2f}")
+            compare_override_col3.metric("Auto edge", f"{float(auto_weight_profile['edge_multiplier']):.2f}")
+            compare_override_col4.metric("Auto market history", f"{float(auto_weight_profile['history_market_weight']):.2f}")
+            if override_enabled:
+                st.info(
+                    "Manual overrides are active. Overview, Edge Scanner, and Parlay Lab will all use your custom smart-engine mix until you turn this off."
+                )
+            else:
+                st.caption(
+                    f"Auto-tuned profile currently resolves to model {float(resolved_weight_profile['model_score_weight']):.2f}, "
+                    f"confidence {float(resolved_weight_profile['confidence_score_weight']):.2f}, "
+                    f"edge {float(resolved_weight_profile['edge_multiplier']):.2f}, "
+                    f"market history {float(resolved_weight_profile['history_market_weight']):.2f}."
+                )
 
         smart_tab1, smart_tab2, smart_tab3 = st.tabs(["Best Markets", "Best Sportsbooks", "Confidence Memory"])
 
