@@ -1240,6 +1240,8 @@ def build_smart_learning_display(df: pd.DataFrame, rename_map: dict[str, str], p
 def format_source_label(value: str) -> str:
     label_map = {
         "smart_pick_engine": "Smart Pick Engine",
+        "smart_pick_engine_auto": "Smart Pick Engine (Auto)",
+        "smart_pick_engine_manual": "Smart Pick Engine (Manual)",
         "edge_scanner": "Edge Scanner",
         "manual_track": "Manual Track",
         "manual_result": "Manual Result",
@@ -1249,6 +1251,16 @@ def format_source_label(value: str) -> str:
     if raw in label_map:
         return label_map[raw]
     return raw.replace("_", " ").title()
+
+
+def format_bool_build_setting(value, true_label: str = "Allowed", false_label: str = "Blocked") -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "N/A"
+    return true_label if bool(value) else false_label
+
+
+def active_smart_tracking_source() -> str:
+    return "smart_pick_engine_manual" if manual_smart_weight_overrides else "smart_pick_engine_auto"
 
 
 def render_smart_parlay_profile_panel(
@@ -2835,8 +2847,9 @@ with tab2:
         smart_track_count = st.slider("Track top smart-ranked edges", min_value=1, max_value=25, value=5, key="track_top_smart_edges")
         if st.button("Save Top Smart Picks For Grading", use_container_width=True):
             smart_rows_to_track = display_edges.sort_values(["smart_score", "smart_expected_win_rate", "edge"], ascending=False).head(smart_track_count).copy()
-            tracked = track_edge_rows(smart_rows_to_track, sport_key=live_sport_keys[0], source="smart_pick_engine")
-            st.success(f"Saved {tracked} smart-ranked picks to the grading tracker.")
+            smart_source = active_smart_tracking_source()
+            tracked = track_edge_rows(smart_rows_to_track, sport_key=live_sport_keys[0], source=smart_source)
+            st.success(f"Saved {tracked} smart-ranked picks to the grading tracker under `{format_source_label(smart_source)}`.")
         edge_watchlist_options = build_watchlist_option_labels(display_edges.head(30))
         selected_edge_watchlist = st.multiselect(
             "Add edge rows to watchlist",
@@ -3101,6 +3114,38 @@ with tab3:
                     ]))),
                     use_container_width=True,
                 )
+                st.markdown("#### Parlay Leg Audit")
+                parlay_audit_candidates = parlay_df.sort_values(["smart_score", "smart_expected_win_rate", "edge"], ascending=False).copy() if "smart_score" in parlay_df.columns else parlay_df.copy()
+                if parlay_audit_candidates.empty or "smart_audit_label" not in parlay_audit_candidates.columns:
+                    st.caption("No smart audit is available for this parlay build yet.")
+                else:
+                    parlay_audit_pick = st.selectbox(
+                        "Inspect a parlay leg",
+                        parlay_audit_candidates["smart_audit_label"].tolist(),
+                        key=f"parlay_leg_audit_{sport_label}",
+                    )
+                    parlay_audit_row = parlay_audit_candidates[parlay_audit_candidates["smart_audit_label"] == parlay_audit_pick].head(1)
+                    if not parlay_audit_row.empty:
+                        selected_parlay_audit = parlay_audit_row.iloc[0]
+                        parlay_audit_col1, parlay_audit_col2, parlay_audit_col3, parlay_audit_col4 = st.columns(4)
+                        parlay_audit_col1.metric("Smart score", f"{float(selected_parlay_audit.get('smart_score', 0.0) or 0.0):.1f}")
+                        parlay_audit_col2.metric("Expected win %", f"{float(selected_parlay_audit.get('smart_expected_win_rate', 0.0) or 0.0) * 100:.1f}%")
+                        parlay_audit_col3.metric("Tier", str(selected_parlay_audit.get("smart_tier") or "N/A"))
+                        parlay_audit_col4.metric("History picks", f"{int(selected_parlay_audit.get('history_picks_used', 0) or 0)}")
+                        st.caption(str(selected_parlay_audit.get("smart_summary") or ""))
+                        st.dataframe(
+                            compact_numeric_table(
+                                build_smart_pick_audit(selected_parlay_audit).rename(
+                                    columns={
+                                        "component": "Score Component",
+                                        "impact": "Impact",
+                                        "detail": "Why",
+                                    }
+                                )
+                            ),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
                 if is_dfs:
                     selected_live_dfs_adapter = render_dfs_autoslip_panel(
                         card_df=parlay_df,
@@ -3755,8 +3800,10 @@ with tab5:
         )
         st.dataframe(compact_numeric_table(source_summary_display), use_container_width=True, hide_index=True)
 
-        smart_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine"].head(1)
+        auto_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_auto"].head(1)
+        manual_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_manual"].head(1)
         legacy_row = source_summary_df[source_summary_df["source"] == "edge_scanner"].head(1)
+        smart_row = source_summary_df[source_summary_df["source"].isin(["smart_pick_engine_auto", "smart_pick_engine_manual", "smart_pick_engine"])].head(1)
         if not smart_row.empty and not legacy_row.empty:
             smart_row = smart_row.iloc[0]
             legacy_row = legacy_row.iloc[0]
@@ -3780,6 +3827,28 @@ with tab5:
             st.caption(
                 "This comparison uses graded picks only. As more smart-ranked picks settle, the signal here will become more reliable."
             )
+        if not auto_row.empty and not manual_row.empty:
+            auto_row = auto_row.iloc[0]
+            manual_row = manual_row.iloc[0]
+            st.markdown("#### Auto vs Manual Smart Testing")
+            compare_mode_col1, compare_mode_col2, compare_mode_col3, compare_mode_col4 = st.columns(4)
+            compare_mode_col1.metric(
+                "Manual Hit Rate Lift",
+                f"{(float(manual_row['hit_rate']) - float(auto_row['hit_rate'])) * 100:+.1f} pts",
+            )
+            compare_mode_col2.metric(
+                "Manual Units/Pick Lift",
+                f"{float(manual_row['roi_per_pick']) - float(auto_row['roi_per_pick']):+.2f}",
+            )
+            compare_mode_col3.metric(
+                "Manual Unit Lift",
+                f"{float(manual_row['profit_units']) - float(auto_row['profit_units']):+.2f}u",
+            )
+            compare_mode_col4.metric(
+                "Sample Size",
+                f"{int(manual_row['picks'])} vs {int(auto_row['picks'])}",
+            )
+            st.caption("Use this section to compare whether your manual smart-engine mix is actually outperforming the auto-tuned profile.")
 
         cumulative_source_profit, rolling_source_hit_rate = build_true_source_timeseries(graded_df)
         trend_tab1, trend_tab2 = st.tabs(["Cumulative Units", "Rolling Hit Rate"])
@@ -4175,6 +4244,10 @@ with tab5:
                 "leg_count",
                 "avg_confidence",
                 "avg_model_prob",
+                "build_candidate_pool",
+                "build_style",
+                "build_min_confidence",
+                "build_smart_profile_mode",
                 "resolved_legs",
                 "won_legs",
                 "push_legs",
@@ -4185,6 +4258,10 @@ with tab5:
         ].copy()
         display_tickets["avg_confidence"] = display_tickets["avg_confidence"].round(1)
         display_tickets["avg_model_prob"] = (display_tickets["avg_model_prob"] * 100).round(2)
+        if "source" in display_tickets.columns:
+            display_tickets["source"] = display_tickets["source"].map(format_source_label)
+        if "build_smart_profile_mode" in display_tickets.columns:
+            display_tickets["build_smart_profile_mode"] = display_tickets["build_smart_profile_mode"].map(lambda value: str(value or "").replace("_", " ").title())
         st.dataframe(compact_numeric_table(display_tickets), use_container_width=True)
         ticket_export_df = export_ticket_legs_for_csv(sport_label)
         if not ticket_export_df.empty:
@@ -4229,6 +4306,26 @@ with tab5:
             snapshot_col6.metric("Avg model %", f"{float(ticket_row['avg_model_prob']) * 100:.2f}%" if pd.notna(ticket_row["avg_model_prob"]) else "N/A")
             snapshot_col7.metric("Resolved legs", str(ticket_row["resolved_legs"]))
             snapshot_col8.metric("Open legs", str(ticket_row["open_legs"]))
+            build_col1, build_col2, build_col3, build_col4 = st.columns(4)
+            build_col1.metric("Candidate pool", str(ticket_row.get("build_candidate_pool") or "N/A"))
+            build_col2.metric("Build style", str(ticket_row.get("build_style") or "N/A"))
+            build_col3.metric(
+                "Build min confidence",
+                str(int(ticket_row["build_min_confidence"])) if pd.notna(ticket_row.get("build_min_confidence")) else "N/A",
+            )
+            build_col4.metric(
+                "Profile mode",
+                str(ticket_row.get("build_smart_profile_mode") or "N/A").replace("_", " ").title(),
+            )
+            build_col5, build_col6 = st.columns(2)
+            build_col5.metric(
+                "Same player",
+                format_bool_build_setting(ticket_row.get("build_allow_same_player")),
+            )
+            build_col6.metric(
+                "Same team",
+                format_bool_build_setting(ticket_row.get("build_allow_same_team")),
+            )
             if str(ticket_row.get("dfs_target_app") or "").strip():
                 if dfs_adapter:
                     st.markdown(
