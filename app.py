@@ -3949,19 +3949,21 @@ with tab5:
             """,
             unsafe_allow_html=True,
         )
-
-
-def format_metric_or_na(value, formatter) -> str:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return "N/A"
-    try:
-        return formatter(value)
-    except Exception:
-        return "N/A"
         if row.get("ActionLabel"):
             if status_cols[idx].button(row["ActionLabel"], key=f"results_status_action_{idx}", use_container_width=True):
                 set_dashboard_focus(str(row["ActionTarget"]))
                 st.rerun()
+
+
+
+
+    def format_metric_or_na(value, formatter) -> str:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return "N/A"
+        try:
+            return formatter(value)
+        except Exception:
+            return "N/A"
 
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
     metric_col1.metric("Tracked Picks", f"{len(tracked_df)}")
