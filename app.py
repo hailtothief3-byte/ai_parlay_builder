@@ -519,17 +519,125 @@ def build_market_pulse_summary(edges_df: pd.DataFrame, watchlist_alerts_df: pd.D
     }
 
 
+def build_sync_freshness_summary(last_sync, sync_enabled: bool) -> dict[str, str]:
+    if not sync_enabled:
+        return {
+            "title": "Demo-backed sync",
+            "body": "Live sync is not enabled for this board, so the app is leaning on demo-backed or previously seeded data.",
+        }
+    if last_sync is None:
+        return {
+            "title": "Sync not recent",
+            "body": "No recent sync timestamp is available yet, so the board may need a fresh pull before trusting the latest live posture.",
+        }
+    try:
+        ts = pd.to_datetime(last_sync, utc=True)
+        now = pd.Timestamp.now(tz="UTC")
+        minutes = max(int((now - ts).total_seconds() // 60), 0)
+        if minutes <= 20:
+            return {
+                "title": "Fresh sync",
+                "body": f"Last sync landed about {minutes} minute(s) ago, so the board is reasonably fresh for live scanning.",
+            }
+        if minutes <= 90:
+            return {
+                "title": "Aging sync",
+                "body": f"Last sync was about {minutes} minute(s) ago. The board is still usable, but a refresh would tighten the read.",
+            }
+        return {
+            "title": "Stale board risk",
+            "body": f"Last sync was about {minutes} minute(s) ago, so live prices may have drifted away from the current board state.",
+        }
+    except Exception:
+        return {
+            "title": "Sync time unclear",
+            "body": "The last sync timestamp could not be read cleanly, so treat the current board freshness with a little caution.",
+        }
+
+
+def build_risk_posture_summary(
+    operating_mode: dict[str, str],
+    weekly_review: dict[str, object],
+    monthly_review: dict[str, object],
+    is_dfs: bool,
+) -> dict[str, str]:
+    weekly_current = dict(weekly_review.get("current_summary") or {})
+    monthly_current = dict(monthly_review.get("current_summary") or {})
+    weekly_prior = dict(weekly_review.get("prior_summary") or {})
+    weekly_units = float(weekly_current.get("profit_units", 0.0) or 0.0)
+    monthly_units = float(monthly_current.get("profit_units", 0.0) or 0.0)
+    weekly_hit_delta = float(weekly_current.get("hit_rate", 0.0) or 0.0) - float(weekly_prior.get("hit_rate", 0.0) or 0.0)
+    mode_title = str(operating_mode.get("title") or "").lower()
+    build_label = "DFS cards" if is_dfs else "sportsbook slips"
+    if "press the edge" in mode_title or (weekly_units > 0 and monthly_units > 0 and weekly_hit_delta >= 0):
+        return {
+            "title": "Aggressive",
+            "body": f"Recent results are supportive enough to let {build_label} stay a little more assertive, though the smart ranker should still do the filtering.",
+        }
+    if "selective mode" in mode_title or weekly_units < 0 or monthly_units < 0 or weekly_hit_delta < -0.04:
+        return {
+            "title": "Conservative",
+            "body": f"Current review posture is cooler, so shorter builds and firmer confidence floors are the safer call for {build_label}.",
+        }
+    return {
+        "title": "Balanced",
+        "body": f"The board and recent review are mixed enough that balanced exposure is the better posture for current {build_label}.",
+    }
+
+
+def build_smart_mode_status_summary(
+    source_summary_df: pd.DataFrame,
+    smart_weight_profile: dict[str, object],
+    manual_override_enabled: bool,
+) -> dict[str, str]:
+    profile_mode = str(smart_weight_profile.get("profile_mode") or "default").replace("_", " ").title()
+    if manual_override_enabled:
+        return {
+            "title": "Manual smart mode",
+            "body": f"Manual smart-engine overrides are active right now. Current tuning profile: {profile_mode}.",
+        }
+    if isinstance(source_summary_df, pd.DataFrame) and not source_summary_df.empty and "source" in source_summary_df.columns:
+        auto_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_auto"].head(1)
+        manual_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_manual"].head(1)
+        if not auto_row.empty and not manual_row.empty:
+            auto_roi = float(auto_row.iloc[0].get("roi_per_pick", 0.0) or 0.0)
+            manual_roi = float(manual_row.iloc[0].get("roi_per_pick", 0.0) or 0.0)
+            if auto_roi >= manual_roi + 0.05:
+                return {
+                    "title": "Auto mode leading",
+                    "body": f"Smart Pick Engine (Auto) is currently ahead by {auto_roi - manual_roi:+.2f} units per pick, so auto-tuned scoring is earning the default seat.",
+                }
+            if manual_roi >= auto_roi + 0.05:
+                return {
+                    "title": "Manual test close",
+                    "body": f"Manual smart scoring is edging auto by {manual_roi - auto_roi:+.2f} units per pick, so it is still worth monitoring before switching back.",
+                }
+    return {
+        "title": "Auto smart mode",
+        "body": f"Auto smart scoring is active with the current {profile_mode} profile, so the app is leaning on its learned weighting mix instead of manual overrides.",
+    }
+
+
 def render_top_priority_strip(
     operating_mode: dict[str, str],
     priority_cards: list[dict[str, str]],
     source_summary_df: pd.DataFrame,
     edges_df: pd.DataFrame,
     watchlist_alerts_df: pd.DataFrame,
+    weekly_review: dict[str, object],
+    monthly_review: dict[str, object],
+    smart_weight_profile: dict[str, object],
+    manual_override_enabled: bool,
+    last_sync,
+    sync_enabled: bool,
     sport_label: str,
     is_dfs: bool,
 ) -> None:
     top_cards = priority_cards[:2]
     pulse = build_market_pulse_summary(edges_df, watchlist_alerts_df, is_dfs)
+    freshness = build_sync_freshness_summary(last_sync, sync_enabled)
+    risk_posture = build_risk_posture_summary(operating_mode, weekly_review, monthly_review, is_dfs)
+    smart_mode = build_smart_mode_status_summary(source_summary_df, smart_weight_profile, manual_override_enabled)
     source_badges: list[str] = []
     if isinstance(source_summary_df, pd.DataFrame) and not source_summary_df.empty and "source" in source_summary_df.columns:
         for _, row in source_summary_df.head(2).iterrows():
@@ -561,7 +669,15 @@ def render_top_priority_strip(
         f'<strong>{pulse.get("title", "")}</strong>'
         f'<span>{pulse.get("body", "")}</span>'
         f'</div>'
-        f'<div class="priority-strip__badges">{"".join(source_badges)}</div>'
+        f'<div class="priority-strip__badges">'
+        f'<span class="priority-strip__badge">Freshness: {freshness.get("title", "")}</span>'
+        f'<span class="priority-strip__badge">Risk: {risk_posture.get("title", "")}</span>'
+        f'<span class="priority-strip__badge">Smart: {smart_mode.get("title", "")}</span>'
+        f'{"".join(source_badges)}'
+        f'</div>'
+        f'<div class="priority-strip__body" style="margin-top:0.75rem;">{freshness.get("body", "")}</div>'
+        f'<div class="priority-strip__body" style="margin-top:0.45rem;">{risk_posture.get("body", "")}</div>'
+        f'<div class="priority-strip__body" style="margin-top:0.45rem;">{smart_mode.get("body", "")}</div>'
         f'</div>'
         f'<div class="priority-strip__cards">{"".join(cards_markup)}</div>'
         f'</div>'
@@ -2879,6 +2995,8 @@ top_priority_journal = get_journal_entries(sport_label)
 top_priority_weekly_review = build_weekly_model_review(top_priority_graded)
 top_priority_monthly_review = build_monthly_model_review(top_priority_graded)
 top_priority_source_summary = build_true_source_summary(top_priority_graded)
+top_priority_auto_weight_profile = build_smart_weight_profile(top_priority_graded)
+top_priority_resolved_weight_profile = apply_smart_weight_overrides(top_priority_auto_weight_profile, manual_smart_weight_overrides)
 top_priority_operating_mode = build_overview_operating_mode(
     source_summary_df=top_priority_source_summary,
     weekly_review=top_priority_weekly_review,
@@ -2909,6 +3027,12 @@ render_top_priority_strip(
     source_summary_df=top_priority_source_summary,
     edges_df=top_priority_edges,
     watchlist_alerts_df=top_priority_watchlist_alerts,
+    weekly_review=top_priority_weekly_review,
+    monthly_review=top_priority_monthly_review,
+    smart_weight_profile=top_priority_resolved_weight_profile,
+    manual_override_enabled=bool(manual_smart_weight_overrides),
+    last_sync=last_sync,
+    sync_enabled=sync_enabled,
     sport_label=sport_label,
     is_dfs=is_dfs,
 )
