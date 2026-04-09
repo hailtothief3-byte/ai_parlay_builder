@@ -19,7 +19,7 @@ from services.dfs_slip_service import (
     get_dfs_slip_adapters,
     recommend_dfs_slip_adapter,
 )
-from services.analytics import build_calibration_summary, build_clv_backtest, build_experiment_snapshot, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary, build_weekly_model_review
+from services.analytics import build_calibration_summary, build_clv_backtest, build_coach_mode_summary, build_experiment_snapshot, build_model_recommendation_cards, build_monthly_model_review, build_ticket_benchmark_summary, build_true_backtest, build_true_calibration_summary, build_true_confidence_summary, build_true_market_summary, build_true_source_summary, build_true_source_timeseries, build_true_sportsbook_summary, build_weekly_model_review
 from services.board_service import get_latest_board
 from services.bankroll_service import annotate_stake_recommendations, recommend_parlay_stake
 from services.bankroll_journal_service import add_journal_entry, build_bankroll_kpis, build_bankroll_summary, get_journal_entries, settle_journal_entry, sync_ticket_journal_entries
@@ -1332,8 +1332,8 @@ def build_experiment_snapshot_payload(
     return json.dumps(snapshot, indent=2, default=str)
 
 
-def render_weekly_model_review(review: dict[str, object]) -> None:
-    st.markdown("### Weekly Model Review")
+def render_period_model_review(review: dict[str, object], title: str) -> None:
+    st.markdown(f"### {title}")
     current_summary = dict(review.get("current_summary") or {})
     prior_summary = dict(review.get("prior_summary") or {})
     current_label = str(review.get("current_window_label") or "Last 7 days")
@@ -1342,7 +1342,7 @@ def render_weekly_model_review(review: dict[str, object]) -> None:
     if int(current_summary.get("picks", 0) or 0) <= 0 and int(prior_summary.get("picks", 0) or 0) <= 0:
         render_empty_state(
             "No weekly review yet",
-            "Once the app has settled picks across the last two weekly windows, this review will highlight what improved, what slipped, and where the model is currently strongest.",
+            "Once the app has settled picks across the current and prior review windows, this review will highlight what improved, what slipped, and where the model is currently strongest.",
             tone="info",
         )
         return
@@ -1434,6 +1434,49 @@ def render_weekly_model_review(review: dict[str, object]) -> None:
             st.dataframe(compact_numeric_table(market_display.head(12)), use_container_width=True, hide_index=True)
         else:
             st.caption("No weekly market breakdown is available yet.")
+
+
+def render_recommendation_cards(cards: list[dict[str, str]], title: str) -> None:
+    st.markdown(f"### {title}")
+    if not cards:
+        render_empty_state(
+            "No recommendation cards yet",
+            "Once enough graded history is available across the recent review windows, the app will turn trend changes into recommendation cards here.",
+            tone="info",
+        )
+        return
+
+    for card in cards:
+        st.markdown(
+            f"""
+            <div style="
+                background: {theme['card_bg']};
+                border: 1px solid {theme['card_border']};
+                border-radius: 20px;
+                padding: 1rem 1.1rem;
+                margin: 0.0 0 0.8rem;
+                box-shadow: 0 10px 24px rgba(8, 15, 28, 0.08);
+            ">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+                    <div style="font-size:1.02rem;font-weight:700;color:{theme['heading_text']};">{card.get('title', '')}</div>
+                    <div style="
+                        padding:0.22rem 0.7rem;
+                        border-radius:999px;
+                        border:1px solid {theme['card_border']};
+                        color:{theme['section_subtitle']};
+                        font-size:0.78rem;
+                        font-weight:700;
+                        letter-spacing:0.03em;
+                        text-transform:uppercase;
+                    ">{card.get('status', '')}</div>
+                </div>
+                <div style="margin-top:0.55rem;color:{theme['body_text']};line-height:1.5;">
+                    {card.get('body', '')}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def render_smart_parlay_profile_panel(
@@ -2527,6 +2570,8 @@ with tab0:
     overview_unresolved_tracked = get_unresolved_tracked_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
     overview_graded = get_graded_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
     overview_smart_edges, overview_smart_summary = score_smart_picks(overview_edges, overview_graded, override_profile=manual_smart_weight_overrides)
+    overview_weekly_review = build_weekly_model_review(overview_graded)
+    overview_monthly_review = build_monthly_model_review(overview_graded)
     overview_journal = get_journal_entries(sport_label)
     overview_bankroll = build_bankroll_summary(overview_journal, bankroll_amount)
     overview_kpis = build_bankroll_kpis(overview_journal, bankroll_amount)
@@ -2543,6 +2588,9 @@ with tab0:
         notice for notice in overview_notifications if is_notification_visible(sport_label, str(notice.get("notice_id", "")))
     ]
     hidden_notification_history = get_notification_history_rows(sport_label)
+
+    st.markdown("### Coach Mode")
+    st.info(build_coach_mode_summary(overview_weekly_review, overview_monthly_review))
 
     if not overview_watchlist_alerts.empty:
         st.markdown("### Top Watchlist Signals")
@@ -4120,11 +4168,16 @@ with tab5:
                 st.caption("Rolling hit rate uses the last 10 graded picks for each source.")
 
     weekly_review = build_weekly_model_review(graded_df)
-    render_weekly_model_review(weekly_review)
+    monthly_review = build_monthly_model_review(graded_df)
+    recommendation_cards = build_model_recommendation_cards(weekly_review, monthly_review)
+    render_recommendation_cards(recommendation_cards, "Recommendation Cards")
+    render_period_model_review(weekly_review, "Weekly Model Review")
+    render_period_model_review(monthly_review, "Monthly Model Review")
     weekly_review_json = json.dumps(
         {
             "generated_at_utc": pd.Timestamp.utcnow().isoformat(),
             "sport_label": sport_label,
+            "recommendation_cards": recommendation_cards,
             "weekly_review": {
                 **weekly_review,
                 "source_breakdown": weekly_review.get("source_breakdown", pd.DataFrame()).to_dict(orient="records")
@@ -4133,6 +4186,15 @@ with tab5:
                 "market_breakdown": weekly_review.get("market_breakdown", pd.DataFrame()).to_dict(orient="records")
                 if isinstance(weekly_review.get("market_breakdown"), pd.DataFrame)
                 else weekly_review.get("market_breakdown"),
+            },
+            "monthly_review": {
+                **monthly_review,
+                "source_breakdown": monthly_review.get("source_breakdown", pd.DataFrame()).to_dict(orient="records")
+                if isinstance(monthly_review.get("source_breakdown"), pd.DataFrame)
+                else monthly_review.get("source_breakdown"),
+                "market_breakdown": monthly_review.get("market_breakdown", pd.DataFrame()).to_dict(orient="records")
+                if isinstance(monthly_review.get("market_breakdown"), pd.DataFrame)
+                else monthly_review.get("market_breakdown"),
             },
         },
         indent=2,

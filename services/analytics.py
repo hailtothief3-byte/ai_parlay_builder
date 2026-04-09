@@ -296,10 +296,15 @@ def build_experiment_snapshot(
     return snapshot
 
 
-def build_weekly_model_review(graded_df: pd.DataFrame) -> dict[str, object]:
+def build_period_model_review(
+    graded_df: pd.DataFrame,
+    period_days: int,
+    current_label: str,
+    prior_label: str,
+) -> dict[str, object]:
     empty_response = {
-        "current_window_label": "Last 7 days",
-        "prior_window_label": "Prior 7 days",
+        "current_window_label": current_label,
+        "prior_window_label": prior_label,
         "current_summary": {},
         "prior_summary": {},
         "source_breakdown": pd.DataFrame(),
@@ -318,8 +323,8 @@ def build_weekly_model_review(graded_df: pd.DataFrame) -> dict[str, object]:
     latest_resolved = working["resolved_at"].max()
     if pd.isna(latest_resolved):
         return empty_response
-    current_start = latest_resolved - pd.Timedelta(days=7)
-    prior_start = current_start - pd.Timedelta(days=7)
+    current_start = latest_resolved - pd.Timedelta(days=period_days)
+    prior_start = current_start - pd.Timedelta(days=period_days)
 
     current_df = working[working["resolved_at"] >= current_start].copy()
     prior_df = working[(working["resolved_at"] >= prior_start) & (working["resolved_at"] < current_start)].copy()
@@ -404,13 +409,13 @@ def build_weekly_model_review(graded_df: pd.DataFrame) -> dict[str, object]:
     hit_delta = current_summary["hit_rate"] - prior_summary["hit_rate"]
 
     if current_summary["picks"] <= 0:
-        insights.append("No graded picks landed in the last 7 days, so the weekly review is waiting on fresh settled results.")
+        insights.append(f"No graded picks landed in {current_label.lower()}, so the review is waiting on fresh settled results.")
     else:
         insights.append(
-            f"Last 7 days logged {current_summary['picks']} graded picks, {pick_delta:+d} versus the prior week, for {current_summary['profit_units']:+.2f} units."
+            f"{current_label} logged {current_summary['picks']} graded picks, {pick_delta:+d} versus {prior_label.lower()}, for {current_summary['profit_units']:+.2f} units."
         )
         insights.append(
-            f"Weekly hit rate moved {hit_delta * 100:+.1f} points to {current_summary['hit_rate'] * 100:.1f}%, while units per pick shifted {upp_delta:+.2f} to {current_summary['units_per_pick']:+.2f}."
+            f"Hit rate moved {hit_delta * 100:+.1f} points to {current_summary['hit_rate'] * 100:.1f}%, while units per pick shifted {upp_delta:+.2f} to {current_summary['units_per_pick']:+.2f}."
         )
         if current_summary["top_source"]:
             insights.append(f"Best current workflow source: {current_summary['top_source']}.")
@@ -418,14 +423,130 @@ def build_weekly_model_review(graded_df: pd.DataFrame) -> dict[str, object]:
             insights.append(f"Best current market pocket: {current_summary['top_market']}.")
 
     return {
-        "current_window_label": "Last 7 days",
-        "prior_window_label": "Prior 7 days",
+        "current_window_label": current_label,
+        "prior_window_label": prior_label,
         "current_summary": current_summary,
         "prior_summary": prior_summary,
         "source_breakdown": source_breakdown,
         "market_breakdown": market_breakdown,
         "insights": insights,
     }
+
+
+def build_weekly_model_review(graded_df: pd.DataFrame) -> dict[str, object]:
+    return build_period_model_review(
+        graded_df=graded_df,
+        period_days=7,
+        current_label="Last 7 days",
+        prior_label="Prior 7 days",
+    )
+
+
+def build_monthly_model_review(graded_df: pd.DataFrame) -> dict[str, object]:
+    return build_period_model_review(
+        graded_df=graded_df,
+        period_days=30,
+        current_label="Last 30 days",
+        prior_label="Prior 30 days",
+    )
+
+
+def build_model_recommendation_cards(weekly_review: dict[str, object], monthly_review: dict[str, object]) -> list[dict[str, str]]:
+    cards: list[dict[str, str]] = []
+    weekly_current = dict(weekly_review.get("current_summary") or {})
+    monthly_current = dict(monthly_review.get("current_summary") or {})
+    weekly_prior = dict(weekly_review.get("prior_summary") or {})
+    monthly_prior = dict(monthly_review.get("prior_summary") or {})
+
+    weekly_units = float(weekly_current.get("profit_units", 0.0) or 0.0)
+    weekly_units_per_pick = float(weekly_current.get("units_per_pick", 0.0) or 0.0)
+    weekly_hit_delta = float(weekly_current.get("hit_rate", 0.0) or 0.0) - float(weekly_prior.get("hit_rate", 0.0) or 0.0)
+    monthly_units = float(monthly_current.get("profit_units", 0.0) or 0.0)
+    monthly_units_per_pick = float(monthly_current.get("units_per_pick", 0.0) or 0.0)
+    monthly_hit_delta = float(monthly_current.get("hit_rate", 0.0) or 0.0) - float(monthly_prior.get("hit_rate", 0.0) or 0.0)
+
+    top_weekly_source = str(weekly_current.get("top_source") or "")
+    top_weekly_market = str(weekly_current.get("top_market") or "")
+
+    if weekly_units > 0 and weekly_units_per_pick > 0:
+        cards.append(
+            {
+                "title": "Lean Into What Is Working",
+                "status": "Positive Momentum",
+                "body": f"The last 7 days are profitable at {weekly_units:+.2f} units and {weekly_units_per_pick:+.2f} units per pick. Keep weighting current builds toward the workflow patterns that are already paying off.",
+            }
+        )
+    elif weekly_units < 0 or weekly_units_per_pick < 0:
+        cards.append(
+            {
+                "title": "Tighten Current Exposure",
+                "status": "Cooling Off",
+                "body": f"The last 7 days slipped to {weekly_units:+.2f} units and {weekly_units_per_pick:+.2f} units per pick. This is a good stretch to reduce aggressive forcing and lean on the strongest-ranked edges only.",
+            }
+        )
+
+    if weekly_hit_delta < -0.04 and monthly_hit_delta < 0:
+        cards.append(
+            {
+                "title": "Reduce Aggressive Builds",
+                "status": "Hit Rate Pressure",
+                "body": "Short-term and monthly hit rate are both slipping. Consider trimming leg counts, raising minimum confidence, and letting the smart profile stay more selective for now.",
+            }
+        )
+    elif weekly_hit_delta > 0.04 and monthly_hit_delta > 0:
+        cards.append(
+            {
+                "title": "Trust The Current Mix",
+                "status": "Hit Rate Improving",
+                "body": "Hit rate is improving in both the weekly and monthly windows. This is a healthier time to trust the current smart ranking mix instead of making large manual changes.",
+            }
+        )
+
+    if top_weekly_market:
+        cards.append(
+            {
+                "title": "Best Current Market Pocket",
+                "status": "Market Read",
+                "body": f"{top_weekly_market} is the strongest recent market pocket. Keep an eye on whether that edge remains real in the next weekly review before over-expanding into colder markets.",
+            }
+        )
+
+    if top_weekly_source:
+        cards.append(
+            {
+                "title": "Current Workflow Leader",
+                "status": "Source Edge",
+                "body": f"{top_weekly_source} is leading the recent window. Let that workflow guide more of the near-term tracking volume while the other paths keep proving themselves.",
+            }
+        )
+
+    if monthly_units < 0 and not cards:
+        cards.append(
+            {
+                "title": "Monthly Reset",
+                "status": "Watch Closely",
+                "body": "The last 30 days are still negative overall, even if the latest week is mixed. Stay deliberate with stake sizing and focus on cleaner setups until the broader trend improves.",
+            }
+        )
+
+    return cards[:4]
+
+
+def build_coach_mode_summary(weekly_review: dict[str, object], monthly_review: dict[str, object]) -> str:
+    weekly_current = dict(weekly_review.get("current_summary") or {})
+    monthly_current = dict(monthly_review.get("current_summary") or {})
+    weekly_units = float(weekly_current.get("profit_units", 0.0) or 0.0)
+    monthly_units = float(monthly_current.get("profit_units", 0.0) or 0.0)
+    weekly_source = str(weekly_current.get("top_source") or "")
+    weekly_market = str(weekly_current.get("top_market") or "")
+
+    if int(weekly_current.get("picks", 0) or 0) <= 0:
+        return "Coach Mode: waiting on more settled picks before making a fresh weekly call."
+
+    posture = "press the edge" if weekly_units > 0 and monthly_units >= 0 else "stay selective"
+    source_text = f"{weekly_source.replace('_', ' ').title()} is leading the current mix" if weekly_source else "no clear workflow leader has emerged yet"
+    market_text = f", with {weekly_market.replace('_', ' ').title()} acting as the strongest market pocket" if weekly_market else ""
+    return f"Coach Mode: {source_text}{market_text}, so the current posture is to {posture} while the app keeps tracking weekly versus monthly trend strength."
 
 
 def build_ticket_benchmark_summary(graded_picks_df: pd.DataFrame, leg_count: int) -> dict[str, float | int | None]:
