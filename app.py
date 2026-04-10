@@ -2953,12 +2953,14 @@ theme_css = (
 )
 st.markdown(theme_css, unsafe_allow_html=True)
 
-selector_col1, selector_col2, selector_col3 = st.columns([1.1, 0.95, 0.8])
+selector_col1, selector_col2, selector_col3, selector_col4 = st.columns([1.0, 0.9, 0.75, 0.75])
 sport_labels = get_sport_labels()
 app_sport_session_key = "selected_sport_label"
 sync_view_preference_state("__app__", app_sport_session_key, "selected_sport_label", sport_labels[0])
 sync_bool_view_preference_state("__app__", "smart_weights_override_enabled", "smart_weights_override_enabled", False)
 sync_bool_view_preference_state("__app__", "top_priority_strip_collapsed", "top_priority_strip_collapsed", False)
+app_detail_mode_session_key = "app_detail_mode"
+sync_view_preference_state("__app__", app_detail_mode_session_key, "detail_mode", "Simple")
 sync_typed_view_preference_state("__app__", "smart_model_weight", "smart_model_weight", 0.42, float)
 sync_typed_view_preference_state("__app__", "smart_confidence_weight", "smart_confidence_weight", 0.28, float)
 sync_typed_view_preference_state("__app__", "smart_edge_multiplier", "smart_edge_multiplier", 1.45, float)
@@ -3001,6 +3003,19 @@ with selector_col3:
         args=("__app__", theme_session_key, "theme_mode"),
     )
 persist_preference_if_changed("__app__", "theme_mode", theme_mode, "Light")
+with selector_col4:
+    st.markdown('<div class="top-select-label">View</div>', unsafe_allow_html=True)
+    app_detail_mode = st.selectbox(
+        "View",
+        ["Simple", "Pro"],
+        key=app_detail_mode_session_key,
+        label_visibility="collapsed",
+        on_change=persist_view_preference_from_session,
+        args=("__app__", app_detail_mode_session_key, "detail_mode"),
+    )
+persist_preference_if_changed("__app__", "detail_mode", app_detail_mode, "Simple")
+is_pro_mode = app_detail_mode == "Pro"
+is_simple_mode = not is_pro_mode
 
 sport_config = get_sport_config(sport_label)
 live_sport_keys = resolve_live_keys_for_label(sport_label)
@@ -3645,6 +3660,8 @@ with tab0:
         is_dfs=is_dfs,
     )
     render_recommendation_cards(overview_next_step_cards, "Suggested Next Steps", key_prefix="overview_next_steps")
+    if is_simple_mode:
+        st.caption("Simple view keeps the operating guidance, builder flow, and ticket tracking up front. Switch to `Pro` for deeper audit, review, and experiment diagnostics.")
 
     if not overview_watchlist_alerts.empty:
         st.markdown("### Top Watchlist Signals")
@@ -3685,71 +3702,72 @@ with tab0:
                 st.info("Choose a reminder to restore first.")
         for idx, notice in enumerate(visible_notifications):
             render_notification_notice(notice, key_suffix=str(idx), sport_label=sport_label)
-    if hidden_notification_history:
+    if hidden_notification_history and is_pro_mode:
         with st.expander("Notification History", expanded=False):
             history_df = pd.DataFrame(hidden_notification_history)
             if "timestamp" in history_df.columns:
                 history_df["when"] = history_df["timestamp"].map(lambda value: format_relative_timestamp(value))
             st.dataframe(history_df, use_container_width=True, hide_index=True)
 
-    st.markdown("### Workflow Readiness")
-    workflow_left, workflow_right = st.columns(2)
-    with workflow_left:
-        render_workflow_check_item(
-            "Market data available",
-            ok=not overview_board.empty,
-            detail=(
-                f"{len(overview_board)} live board rows are loaded."
-                if not overview_board.empty
-                else "Run a live sync or seed demo data so the board can populate."
-            ),
-        )
-        render_workflow_check_item(
-            "Edge scanner populated",
-            ok=not overview_edges.empty,
-            detail=(
-                f"{len(overview_edges)} edge rows are available for ranking."
-                if not overview_edges.empty
-                else "Wait for market lines and projections so the scanner can rank props."
-            ),
-        )
-        render_workflow_check_item(
-            "Watchlist active",
-            ok=not overview_watchlist.empty,
-            detail=(
-                f"{len(overview_watchlist)} props are saved to the watchlist."
-                if not overview_watchlist.empty
-                else "Add a few props from Live Board or Edge Scanner to test the watchlist workflow."
-            ),
-        )
-    with workflow_right:
-        render_workflow_check_item(
-            "Ticket tracking started",
-            ok=not overview_tickets.empty,
-            detail=(
-                f"{len(overview_tickets)} saved tickets are available."
-                if not overview_tickets.empty
-                else "Save a live or demo ticket from Parlay Lab to test ticket tracking."
-            ),
-        )
-        render_workflow_check_item(
-            "Grading history exists",
-            ok=not overview_graded.empty,
-            detail=(
-                f"{len(overview_graded)} graded picks are ready for backtest views."
-                if not overview_graded.empty
-                else "Track edges and settle results to unlock true-results backtesting."
-            ),
-        )
-        render_workflow_check_item(
-            "Bankroll journal active",
-            ok=not overview_journal.empty,
-            detail=(
-                f"{len(overview_journal)} bankroll entries are logged."
-                if not overview_journal.empty
-                else "Add a manual journal entry or log a saved ticket to test bankroll tracking."
-            ),
-        )
+    if is_pro_mode:
+        st.markdown("### Workflow Readiness")
+        workflow_left, workflow_right = st.columns(2)
+        with workflow_left:
+            render_workflow_check_item(
+                "Market data available",
+                ok=not overview_board.empty,
+                detail=(
+                    f"{len(overview_board)} live board rows are loaded."
+                    if not overview_board.empty
+                    else "Run a live sync or seed demo data so the board can populate."
+                ),
+            )
+            render_workflow_check_item(
+                "Edge scanner populated",
+                ok=not overview_edges.empty,
+                detail=(
+                    f"{len(overview_edges)} edge rows are available for ranking."
+                    if not overview_edges.empty
+                    else "Wait for market lines and projections so the scanner can rank props."
+                ),
+            )
+            render_workflow_check_item(
+                "Watchlist active",
+                ok=not overview_watchlist.empty,
+                detail=(
+                    f"{len(overview_watchlist)} props are saved to the watchlist."
+                    if not overview_watchlist.empty
+                    else "Add a few props from Live Board or Edge Scanner to test the watchlist workflow."
+                ),
+            )
+        with workflow_right:
+            render_workflow_check_item(
+                "Ticket tracking started",
+                ok=not overview_tickets.empty,
+                detail=(
+                    f"{len(overview_tickets)} saved tickets are available."
+                    if not overview_tickets.empty
+                    else "Save a live or demo ticket from Parlay Lab to test ticket tracking."
+                ),
+            )
+            render_workflow_check_item(
+                "Grading history exists",
+                ok=not overview_graded.empty,
+                detail=(
+                    f"{len(overview_graded)} graded picks are ready for backtest views."
+                    if not overview_graded.empty
+                    else "Track edges and settle results to unlock true-results backtesting."
+                ),
+            )
+            render_workflow_check_item(
+                "Bankroll journal active",
+                ok=not overview_journal.empty,
+                detail=(
+                    f"{len(overview_journal)} bankroll entries are logged."
+                    if not overview_journal.empty
+                    else "Add a manual journal entry or log a saved ticket to test bankroll tracking."
+                ),
+            )
 
     overview_col1, overview_col2, overview_col3, overview_col4 = st.columns(4)
     overview_col1.metric("Live Board Rows", f"{len(overview_board)}")
@@ -4077,63 +4095,66 @@ with tab2:
         for card in cards:
             render_prop_card(card)
 
-        st.markdown("### Smart Score Audit")
-        audit_candidates = display_edges.sort_values(["smart_score", "smart_expected_win_rate", "edge"], ascending=False).head(20).copy()
-        if audit_candidates.empty:
-            st.caption("No smart-ranked candidates are available to audit right now.")
+        if is_pro_mode:
+            st.markdown("### Smart Score Audit")
+            audit_candidates = display_edges.sort_values(["smart_score", "smart_expected_win_rate", "edge"], ascending=False).head(20).copy()
+            if audit_candidates.empty:
+                st.caption("No smart-ranked candidates are available to audit right now.")
+            else:
+                audit_options = audit_candidates["smart_audit_label"].tolist() if "smart_audit_label" in audit_candidates.columns else []
+                selected_audit_pick = st.selectbox(
+                    "Inspect a smart-ranked pick",
+                    audit_options,
+                    key="smart_score_audit_pick",
+                )
+                selected_audit_row = audit_candidates[audit_candidates["smart_audit_label"] == selected_audit_pick].head(1)
+                if not selected_audit_row.empty:
+                    audit_row = selected_audit_row.iloc[0]
+                    audit_metric_col1, audit_metric_col2, audit_metric_col3, audit_metric_col4 = st.columns(4)
+                    audit_metric_col1.metric("Smart score", f"{float(audit_row.get('smart_score', 0.0) or 0.0):.1f}")
+                    audit_metric_col2.metric("Expected win %", f"{float(audit_row.get('smart_expected_win_rate', 0.0) or 0.0) * 100:.1f}%")
+                    audit_metric_col3.metric("Profile mode", str(audit_row.get("smart_profile_mode") or "default").replace("_", " ").title())
+                    audit_metric_col4.metric("History picks used", f"{int(audit_row.get('history_picks_used', 0) or 0)}")
+                    st.caption(str(audit_row.get("smart_summary") or ""))
+
+                    history_compare_df = build_smart_history_comparison(audit_row)
+                    if not history_compare_df.empty:
+                        st.markdown("#### Full History vs Recent Form")
+                        history_compare_display = history_compare_df.copy()
+                        history_compare_display["full_history"] = (pd.to_numeric(history_compare_display["full_history"], errors="coerce") * 100).round(1)
+                        history_compare_display["recent_form"] = (pd.to_numeric(history_compare_display["recent_form"], errors="coerce") * 100).round(1)
+                        history_compare_display["full_roi"] = pd.to_numeric(history_compare_display["full_roi"], errors="coerce").round(2)
+                        history_compare_display["recent_roi"] = pd.to_numeric(history_compare_display["recent_roi"], errors="coerce").round(2)
+                        history_compare_display = history_compare_display.rename(
+                            columns={
+                                "memory_type": "Memory Type",
+                                "full_history": "Full Hit Rate %",
+                                "recent_form": "Recent Hit Rate %",
+                                "full_sample": "Full Picks",
+                                "recent_sample": "Recent Picks",
+                                "full_roi": "Full Units/Pick",
+                                "recent_roi": "Recent Units/Pick",
+                            }
+                        )
+                        st.dataframe(compact_numeric_table(history_compare_display), use_container_width=True, hide_index=True)
+
+                    audit_df = build_smart_pick_audit(audit_row)
+                    if not audit_df.empty:
+                        st.dataframe(
+                            compact_numeric_table(
+                                audit_df.rename(
+                                    columns={
+                                        "component": "Score Component",
+                                        "impact": "Impact",
+                                        "detail": "Why",
+                                    }
+                                )
+                            ),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
         else:
-            audit_options = audit_candidates["smart_audit_label"].tolist() if "smart_audit_label" in audit_candidates.columns else []
-            selected_audit_pick = st.selectbox(
-                "Inspect a smart-ranked pick",
-                audit_options,
-                key="smart_score_audit_pick",
-            )
-            selected_audit_row = audit_candidates[audit_candidates["smart_audit_label"] == selected_audit_pick].head(1)
-            if not selected_audit_row.empty:
-                audit_row = selected_audit_row.iloc[0]
-                audit_metric_col1, audit_metric_col2, audit_metric_col3, audit_metric_col4 = st.columns(4)
-                audit_metric_col1.metric("Smart score", f"{float(audit_row.get('smart_score', 0.0) or 0.0):.1f}")
-                audit_metric_col2.metric("Expected win %", f"{float(audit_row.get('smart_expected_win_rate', 0.0) or 0.0) * 100:.1f}%")
-                audit_metric_col3.metric("Profile mode", str(audit_row.get("smart_profile_mode") or "default").replace("_", " ").title())
-                audit_metric_col4.metric("History picks used", f"{int(audit_row.get('history_picks_used', 0) or 0)}")
-                st.caption(str(audit_row.get("smart_summary") or ""))
-
-                history_compare_df = build_smart_history_comparison(audit_row)
-                if not history_compare_df.empty:
-                    st.markdown("#### Full History vs Recent Form")
-                    history_compare_display = history_compare_df.copy()
-                    history_compare_display["full_history"] = (pd.to_numeric(history_compare_display["full_history"], errors="coerce") * 100).round(1)
-                    history_compare_display["recent_form"] = (pd.to_numeric(history_compare_display["recent_form"], errors="coerce") * 100).round(1)
-                    history_compare_display["full_roi"] = pd.to_numeric(history_compare_display["full_roi"], errors="coerce").round(2)
-                    history_compare_display["recent_roi"] = pd.to_numeric(history_compare_display["recent_roi"], errors="coerce").round(2)
-                    history_compare_display = history_compare_display.rename(
-                        columns={
-                            "memory_type": "Memory Type",
-                            "full_history": "Full Hit Rate %",
-                            "recent_form": "Recent Hit Rate %",
-                            "full_sample": "Full Picks",
-                            "recent_sample": "Recent Picks",
-                            "full_roi": "Full Units/Pick",
-                            "recent_roi": "Recent Units/Pick",
-                        }
-                    )
-                    st.dataframe(compact_numeric_table(history_compare_display), use_container_width=True, hide_index=True)
-
-                audit_df = build_smart_pick_audit(audit_row)
-                if not audit_df.empty:
-                    st.dataframe(
-                        compact_numeric_table(
-                            audit_df.rename(
-                                columns={
-                                    "component": "Score Component",
-                                    "impact": "Impact",
-                                    "detail": "Why",
-                                }
-                            )
-                        ),
-                        use_container_width=True,
-                        hide_index=True,
-                    )
+            st.caption("Detailed smart-score audit is available in `Pro` view.")
 
         track_count = st.slider("Track top live edges", min_value=1, max_value=25, value=5, key="track_top_edges")
         if st.button("Save Top Live Edges For Grading", use_container_width=True):
@@ -4205,8 +4226,9 @@ with tab3:
     parlay_jump_labels = [
         ("smart_profiles", "Jump to Smart Profiles"),
         ("builder", "Jump to Builder"),
-        ("audit", "Jump to Leg Audit"),
     ]
+    if is_pro_mode:
+        parlay_jump_labels.append(("audit", "Jump to Leg Audit"))
     if is_dfs:
         parlay_jump_labels.append(("dfs_autoslip", "Jump to DFS Auto-Slip"))
     parlay_jump_cols = st.columns(len(parlay_jump_labels))
@@ -4428,60 +4450,63 @@ with tab3:
                     ]))),
                     use_container_width=True,
                 )
-                st.markdown("#### Parlay Leg Audit")
-                if parlay_focus_target == "audit":
-                    st.info("Parlay Lab jump is focused on the live parlay leg audit below.")
-                parlay_audit_candidates = parlay_df.sort_values(["smart_score", "smart_expected_win_rate", "edge"], ascending=False).copy() if "smart_score" in parlay_df.columns else parlay_df.copy()
-                if parlay_audit_candidates.empty or "smart_audit_label" not in parlay_audit_candidates.columns:
-                    st.caption("No smart audit is available for this parlay build yet.")
-                else:
-                    parlay_audit_pick = st.selectbox(
-                        "Inspect a parlay leg",
-                        parlay_audit_candidates["smart_audit_label"].tolist(),
-                        key=f"parlay_leg_audit_{sport_label}",
-                    )
-                    parlay_audit_row = parlay_audit_candidates[parlay_audit_candidates["smart_audit_label"] == parlay_audit_pick].head(1)
-                    if not parlay_audit_row.empty:
-                        selected_parlay_audit = parlay_audit_row.iloc[0]
-                        parlay_audit_col1, parlay_audit_col2, parlay_audit_col3, parlay_audit_col4 = st.columns(4)
-                        parlay_audit_col1.metric("Smart score", f"{float(selected_parlay_audit.get('smart_score', 0.0) or 0.0):.1f}")
-                        parlay_audit_col2.metric("Expected win %", f"{float(selected_parlay_audit.get('smart_expected_win_rate', 0.0) or 0.0) * 100:.1f}%")
-                        parlay_audit_col3.metric("Tier", str(selected_parlay_audit.get("smart_tier") or "N/A"))
-                        parlay_audit_col4.metric("History picks", f"{int(selected_parlay_audit.get('history_picks_used', 0) or 0)}")
-                        st.caption(str(selected_parlay_audit.get("smart_summary") or ""))
-                        parlay_history_compare = build_smart_history_comparison(selected_parlay_audit)
-                        if not parlay_history_compare.empty:
-                            st.markdown("##### Full History vs Recent Form")
-                            parlay_history_display = parlay_history_compare.copy()
-                            parlay_history_display["full_history"] = (pd.to_numeric(parlay_history_display["full_history"], errors="coerce") * 100).round(1)
-                            parlay_history_display["recent_form"] = (pd.to_numeric(parlay_history_display["recent_form"], errors="coerce") * 100).round(1)
-                            parlay_history_display["full_roi"] = pd.to_numeric(parlay_history_display["full_roi"], errors="coerce").round(2)
-                            parlay_history_display["recent_roi"] = pd.to_numeric(parlay_history_display["recent_roi"], errors="coerce").round(2)
-                            parlay_history_display = parlay_history_display.rename(
-                                columns={
-                                    "memory_type": "Memory Type",
-                                    "full_history": "Full Hit Rate %",
-                                    "recent_form": "Recent Hit Rate %",
-                                    "full_sample": "Full Picks",
-                                    "recent_sample": "Recent Picks",
-                                    "full_roi": "Full Units/Pick",
-                                    "recent_roi": "Recent Units/Pick",
-                                }
-                            )
-                            st.dataframe(compact_numeric_table(parlay_history_display), use_container_width=True, hide_index=True)
-                        st.dataframe(
-                            compact_numeric_table(
-                                build_smart_pick_audit(selected_parlay_audit).rename(
+                if is_pro_mode:
+                    st.markdown("#### Parlay Leg Audit")
+                    if parlay_focus_target == "audit":
+                        st.info("Parlay Lab jump is focused on the live parlay leg audit below.")
+                    parlay_audit_candidates = parlay_df.sort_values(["smart_score", "smart_expected_win_rate", "edge"], ascending=False).copy() if "smart_score" in parlay_df.columns else parlay_df.copy()
+                    if parlay_audit_candidates.empty or "smart_audit_label" not in parlay_audit_candidates.columns:
+                        st.caption("No smart audit is available for this parlay build yet.")
+                    else:
+                        parlay_audit_pick = st.selectbox(
+                            "Inspect a parlay leg",
+                            parlay_audit_candidates["smart_audit_label"].tolist(),
+                            key=f"parlay_leg_audit_{sport_label}",
+                        )
+                        parlay_audit_row = parlay_audit_candidates[parlay_audit_candidates["smart_audit_label"] == parlay_audit_pick].head(1)
+                        if not parlay_audit_row.empty:
+                            selected_parlay_audit = parlay_audit_row.iloc[0]
+                            parlay_audit_col1, parlay_audit_col2, parlay_audit_col3, parlay_audit_col4 = st.columns(4)
+                            parlay_audit_col1.metric("Smart score", f"{float(selected_parlay_audit.get('smart_score', 0.0) or 0.0):.1f}")
+                            parlay_audit_col2.metric("Expected win %", f"{float(selected_parlay_audit.get('smart_expected_win_rate', 0.0) or 0.0) * 100:.1f}%")
+                            parlay_audit_col3.metric("Tier", str(selected_parlay_audit.get("smart_tier") or "N/A"))
+                            parlay_audit_col4.metric("History picks", f"{int(selected_parlay_audit.get('history_picks_used', 0) or 0)}")
+                            st.caption(str(selected_parlay_audit.get("smart_summary") or ""))
+                            parlay_history_compare = build_smart_history_comparison(selected_parlay_audit)
+                            if not parlay_history_compare.empty:
+                                st.markdown("##### Full History vs Recent Form")
+                                parlay_history_display = parlay_history_compare.copy()
+                                parlay_history_display["full_history"] = (pd.to_numeric(parlay_history_display["full_history"], errors="coerce") * 100).round(1)
+                                parlay_history_display["recent_form"] = (pd.to_numeric(parlay_history_display["recent_form"], errors="coerce") * 100).round(1)
+                                parlay_history_display["full_roi"] = pd.to_numeric(parlay_history_display["full_roi"], errors="coerce").round(2)
+                                parlay_history_display["recent_roi"] = pd.to_numeric(parlay_history_display["recent_roi"], errors="coerce").round(2)
+                                parlay_history_display = parlay_history_display.rename(
                                     columns={
-                                        "component": "Score Component",
-                                        "impact": "Impact",
-                                        "detail": "Why",
+                                        "memory_type": "Memory Type",
+                                        "full_history": "Full Hit Rate %",
+                                        "recent_form": "Recent Hit Rate %",
+                                        "full_sample": "Full Picks",
+                                        "recent_sample": "Recent Picks",
+                                        "full_roi": "Full Units/Pick",
+                                        "recent_roi": "Recent Units/Pick",
                                     }
                                 )
-                            ),
-                            use_container_width=True,
-                            hide_index=True,
-                        )
+                                st.dataframe(compact_numeric_table(parlay_history_display), use_container_width=True, hide_index=True)
+                            st.dataframe(
+                                compact_numeric_table(
+                                    build_smart_pick_audit(selected_parlay_audit).rename(
+                                        columns={
+                                            "component": "Score Component",
+                                            "impact": "Impact",
+                                            "detail": "Why",
+                                        }
+                                    )
+                                ),
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+                else:
+                    st.caption("Detailed live leg audit is available in `Pro` view.")
                 if is_dfs:
                     if parlay_focus_target == "dfs_autoslip":
                         st.info("Parlay Lab jump is focused on the DFS auto-slip handoff below.")
@@ -4989,441 +5014,406 @@ with tab5:
     source_summary_df = build_true_source_summary(graded_df)
     override_recommendation_title, override_recommendation_body = build_override_recommendation(source_summary_df)
 
-    st.markdown("### Smart Pick Learning")
-    if graded_df.empty:
-        render_empty_state(
-            "No smart-pick history yet",
-            "Track and grade more picks so the smart engine can build reliable memory by market, sportsbook, and confidence band.",
-            tone="info",
-        )
-    else:
-        smart_summary_row = smart_learning_tables["summary"].iloc[0].to_dict() if not smart_learning_tables["summary"].empty else {}
-        smart_weight_row = smart_learning_tables["weight_profile"].iloc[0].to_dict() if not smart_learning_tables.get("weight_profile", pd.DataFrame()).empty else {}
+    if is_pro_mode:
+        st.markdown("### Smart Pick Learning")
         auto_weight_profile = build_smart_weight_profile(graded_df)
         resolved_weight_profile = apply_smart_weight_overrides(auto_weight_profile, manual_smart_weight_overrides)
-        smart_weight_row = resolved_weight_profile
-        smart_metric_col1, smart_metric_col2, smart_metric_col3 = st.columns(3)
-        smart_metric_col1.metric("History picks", f"{int(smart_summary_row.get('history_picks', 0) or 0)}")
-        smart_metric_col2.metric("Historical hit rate", f"{float(smart_summary_row.get('overall_hit_rate', 0.0) or 0.0) * 100:.1f}%")
-        smart_metric_col3.metric("Units per pick", f"{float(smart_summary_row.get('overall_roi_per_pick', 0.0) or 0.0):+.2f}")
+        if graded_df.empty:
+            render_empty_state(
+                "No smart-pick history yet",
+                "Track and grade more picks so the smart engine can build reliable memory by market, sportsbook, and confidence band.",
+                tone="info",
+            )
+        else:
+            smart_summary_row = smart_learning_tables["summary"].iloc[0].to_dict() if not smart_learning_tables["summary"].empty else {}
+            smart_weight_row = resolved_weight_profile
+            smart_metric_col1, smart_metric_col2, smart_metric_col3 = st.columns(3)
+            smart_metric_col1.metric("History picks", f"{int(smart_summary_row.get('history_picks', 0) or 0)}")
+            smart_metric_col2.metric("Historical hit rate", f"{float(smart_summary_row.get('overall_hit_rate', 0.0) or 0.0) * 100:.1f}%")
+            smart_metric_col3.metric("Units per pick", f"{float(smart_summary_row.get('overall_roi_per_pick', 0.0) or 0.0):+.2f}")
 
-        tune_col1, tune_col2, tune_col3, tune_col4 = st.columns(4)
-        tune_col1.metric("Tuning mode", str(smart_weight_row.get("profile_mode", "default")).replace("_", " ").title())
-        tune_col2.metric("Model weight", f"{float(smart_weight_row.get('model_score_weight', 0.42) or 0.42):.2f}")
-        tune_col3.metric("History market weight", f"{float(smart_weight_row.get('history_market_weight', 0.36) or 0.36):.2f}")
-        tune_col4.metric("Edge multiplier", f"{float(smart_weight_row.get('edge_multiplier', 1.45) or 1.45):.2f}")
-        if smart_weight_row.get("profile_reason"):
-            st.caption(str(smart_weight_row["profile_reason"]))
+            tune_col1, tune_col2, tune_col3, tune_col4 = st.columns(4)
+            tune_col1.metric("Tuning mode", str(smart_weight_row.get("profile_mode", "default")).replace("_", " ").title())
+            tune_col2.metric("Model weight", f"{float(smart_weight_row.get('model_score_weight', 0.42) or 0.42):.2f}")
+            tune_col3.metric("History market weight", f"{float(smart_weight_row.get('history_market_weight', 0.36) or 0.36):.2f}")
+            tune_col4.metric("Edge multiplier", f"{float(smart_weight_row.get('edge_multiplier', 1.45) or 1.45):.2f}")
+            if smart_weight_row.get("profile_reason"):
+                st.caption(str(smart_weight_row["profile_reason"]))
 
-        with st.expander("Smart Engine Overrides", expanded=False):
-            override_enabled = st.checkbox(
-                "Use manual smart-engine overrides",
-                key="smart_weights_override_enabled",
-                on_change=persist_view_preference_from_session,
-                args=("__app__", "smart_weights_override_enabled", "smart_weights_override_enabled"),
-            )
-            override_col1, override_col2 = st.columns(2)
-            override_col3, override_col4 = st.columns(2)
-            override_col1.slider(
-                "Model weight",
-                min_value=0.28,
-                max_value=0.60,
-                value=float(st.session_state.get("smart_model_weight", auto_weight_profile["model_score_weight"])),
-                step=0.01,
-                key="smart_model_weight",
-                on_change=persist_view_preference_from_session,
-                args=("__app__", "smart_model_weight", "smart_model_weight"),
-                disabled=not override_enabled,
-            )
-            override_col2.slider(
-                "Confidence weight",
-                min_value=0.20,
-                max_value=0.45,
-                value=float(st.session_state.get("smart_confidence_weight", auto_weight_profile["confidence_score_weight"])),
-                step=0.01,
-                key="smart_confidence_weight",
-                on_change=persist_view_preference_from_session,
-                args=("__app__", "smart_confidence_weight", "smart_confidence_weight"),
-                disabled=not override_enabled,
-            )
-            override_col3.slider(
-                "Edge multiplier",
-                min_value=1.00,
-                max_value=2.10,
-                value=float(st.session_state.get("smart_edge_multiplier", auto_weight_profile["edge_multiplier"])),
-                step=0.05,
-                key="smart_edge_multiplier",
-                on_change=persist_view_preference_from_session,
-                args=("__app__", "smart_edge_multiplier", "smart_edge_multiplier"),
-                disabled=not override_enabled,
-            )
-            override_col4.slider(
-                "Market history weight",
-                min_value=0.15,
-                max_value=0.60,
-                value=float(st.session_state.get("smart_history_market_weight", auto_weight_profile["history_market_weight"])),
-                step=0.01,
-                key="smart_history_market_weight",
-                on_change=persist_view_preference_from_session,
-                args=("__app__", "smart_history_market_weight", "smart_history_market_weight"),
-                disabled=not override_enabled,
-            )
-            compare_override_col1, compare_override_col2, compare_override_col3, compare_override_col4 = st.columns(4)
-            compare_override_col1.metric("Auto model", f"{float(auto_weight_profile['model_score_weight']):.2f}")
-            compare_override_col2.metric("Auto confidence", f"{float(auto_weight_profile['confidence_score_weight']):.2f}")
-            compare_override_col3.metric("Auto edge", f"{float(auto_weight_profile['edge_multiplier']):.2f}")
-            compare_override_col4.metric("Auto market history", f"{float(auto_weight_profile['history_market_weight']):.2f}")
-            st.markdown("**Override Recommendation**")
-            st.caption(f"{override_recommendation_title}: {override_recommendation_body}")
-            promote_col1, promote_col2 = st.columns([1.2, 1.8])
-            if promote_col1.button("Promote Recommended Mode", use_container_width=True):
-                if apply_recommended_smart_mode(override_recommendation_title, auto_weight_profile):
-                    st.success(f"Applied recommendation: {override_recommendation_title}.")
-                    st.rerun()
+            with st.expander("Smart Engine Overrides", expanded=False):
+                override_enabled = st.checkbox(
+                    "Use manual smart-engine overrides",
+                    key="smart_weights_override_enabled",
+                    on_change=persist_view_preference_from_session,
+                    args=("__app__", "smart_weights_override_enabled", "smart_weights_override_enabled"),
+                )
+                override_col1, override_col2 = st.columns(2)
+                override_col3, override_col4 = st.columns(2)
+                override_col1.slider(
+                    "Model weight",
+                    min_value=0.28,
+                    max_value=0.60,
+                    value=float(st.session_state.get("smart_model_weight", auto_weight_profile["model_score_weight"])),
+                    step=0.01,
+                    key="smart_model_weight",
+                    on_change=persist_view_preference_from_session,
+                    args=("__app__", "smart_model_weight", "smart_model_weight"),
+                    disabled=not override_enabled,
+                )
+                override_col2.slider(
+                    "Confidence weight",
+                    min_value=0.20,
+                    max_value=0.45,
+                    value=float(st.session_state.get("smart_confidence_weight", auto_weight_profile["confidence_score_weight"])),
+                    step=0.01,
+                    key="smart_confidence_weight",
+                    on_change=persist_view_preference_from_session,
+                    args=("__app__", "smart_confidence_weight", "smart_confidence_weight"),
+                    disabled=not override_enabled,
+                )
+                override_col3.slider(
+                    "Edge multiplier",
+                    min_value=1.00,
+                    max_value=2.10,
+                    value=float(st.session_state.get("smart_edge_multiplier", auto_weight_profile["edge_multiplier"])),
+                    step=0.05,
+                    key="smart_edge_multiplier",
+                    on_change=persist_view_preference_from_session,
+                    args=("__app__", "smart_edge_multiplier", "smart_edge_multiplier"),
+                    disabled=not override_enabled,
+                )
+                override_col4.slider(
+                    "Market history weight",
+                    min_value=0.15,
+                    max_value=0.60,
+                    value=float(st.session_state.get("smart_history_market_weight", auto_weight_profile["history_market_weight"])),
+                    step=0.01,
+                    key="smart_history_market_weight",
+                    on_change=persist_view_preference_from_session,
+                    args=("__app__", "smart_history_market_weight", "smart_history_market_weight"),
+                    disabled=not override_enabled,
+                )
+                compare_override_col1, compare_override_col2, compare_override_col3, compare_override_col4 = st.columns(4)
+                compare_override_col1.metric("Auto model", f"{float(auto_weight_profile['model_score_weight']):.2f}")
+                compare_override_col2.metric("Auto confidence", f"{float(auto_weight_profile['confidence_score_weight']):.2f}")
+                compare_override_col3.metric("Auto edge", f"{float(auto_weight_profile['edge_multiplier']):.2f}")
+                compare_override_col4.metric("Auto market history", f"{float(auto_weight_profile['history_market_weight']):.2f}")
+                st.markdown("**Override Recommendation**")
+                st.caption(f"{override_recommendation_title}: {override_recommendation_body}")
+                promote_col1, promote_col2 = st.columns([1.2, 1.8])
+                if promote_col1.button("Promote Recommended Mode", use_container_width=True):
+                    if apply_recommended_smart_mode(override_recommendation_title, auto_weight_profile):
+                        st.success(f"Applied recommendation: {override_recommendation_title}.")
+                        st.rerun()
+                    else:
+                        st.info("The current recommendation is still observational, so the app is keeping your current smart-engine mode unchanged.")
+                promote_col2.caption("This applies the current recommendation directly to the smart-engine mode. Auto disables manual overrides, while manual keeps your custom slider mix active.")
+                if override_enabled:
+                    st.info("Manual overrides are active. Overview, Edge Scanner, and Parlay Lab will all use your custom smart-engine mix until you turn this off.")
                 else:
-                    st.info("The current recommendation is still observational, so the app is keeping your current smart-engine mode unchanged.")
-            promote_col2.caption("This applies the current recommendation directly to the smart-engine mode. Auto disables manual overrides, while manual keeps your custom slider mix active.")
-            if override_enabled:
-                st.info(
-                    "Manual overrides are active. Overview, Edge Scanner, and Parlay Lab will all use your custom smart-engine mix until you turn this off."
-                )
-            else:
-                st.caption(
-                    f"Auto-tuned profile currently resolves to model {float(resolved_weight_profile['model_score_weight']):.2f}, "
-                    f"confidence {float(resolved_weight_profile['confidence_score_weight']):.2f}, "
-                    f"edge {float(resolved_weight_profile['edge_multiplier']):.2f}, "
-                    f"market history {float(resolved_weight_profile['history_market_weight']):.2f}."
-                )
+                    st.caption(
+                        f"Auto-tuned profile currently resolves to model {float(resolved_weight_profile['model_score_weight']):.2f}, "
+                        f"confidence {float(resolved_weight_profile['confidence_score_weight']):.2f}, "
+                        f"edge {float(resolved_weight_profile['edge_multiplier']):.2f}, "
+                        f"market history {float(resolved_weight_profile['history_market_weight']):.2f}."
+                    )
 
-        recent_signal_col1, recent_signal_col2 = st.columns(2)
-        recent_signal_col1.metric("Recent market signal", f"{float(smart_weight_row.get('recent_market_signal', 0.0) or 0.0):.3f}")
-        recent_signal_col2.metric("Recent sportsbook signal", f"{float(smart_weight_row.get('recent_sportsbook_signal', 0.0) or 0.0):.3f}")
-        st.caption("Recent-form memory is built from the latest settled graded sample, so the smart engine can react to short-term hot and cold pockets without abandoning full-history memory.")
+            recent_signal_col1, recent_signal_col2 = st.columns(2)
+            recent_signal_col1.metric("Recent market signal", f"{float(smart_weight_row.get('recent_market_signal', 0.0) or 0.0):.3f}")
+            recent_signal_col2.metric("Recent sportsbook signal", f"{float(smart_weight_row.get('recent_sportsbook_signal', 0.0) or 0.0):.3f}")
+            st.caption("Recent-form memory is built from the latest settled graded sample, so the smart engine can react to short-term hot and cold pockets without abandoning full-history memory.")
 
-        smart_tab1, smart_tab2, smart_tab3, smart_tab4, smart_tab5 = st.tabs(
-            ["Best Markets", "Recent Markets", "Best Sportsbooks", "Recent Sportsbooks", "Confidence Memory"]
-        )
+            smart_tab1, smart_tab2, smart_tab3, smart_tab4, smart_tab5 = st.tabs(
+                ["Best Markets", "Recent Markets", "Best Sportsbooks", "Recent Sportsbooks", "Confidence Memory"]
+            )
+            with smart_tab1:
+                market_learning = smart_learning_tables["market_summary"]
+                if market_learning.empty:
+                    st.caption("No market-specific history yet.")
+                else:
+                    market_learning_display = build_smart_learning_display(
+                        market_learning.head(12),
+                        rename_map={
+                            "market": "Market",
+                            "market_picks": "Tracked Picks",
+                            "market_hit_rate": "Hit Rate %",
+                            "market_roi_per_pick": "Units Per Pick",
+                            "market_avg_model_prob": "Avg Model %",
+                            "market_avg_confidence": "Avg Confidence",
+                        },
+                        percent_columns=["market_hit_rate", "market_avg_model_prob"],
+                        value_columns=["market_roi_per_pick", "market_avg_confidence"],
+                    )
+                    if "Market" in market_learning_display.columns:
+                        market_learning_display["Market"] = market_learning_display["Market"].map(prettify_market_label)
+                    st.dataframe(market_learning_display, use_container_width=True, hide_index=True)
+            with smart_tab2:
+                recent_market_learning = smart_learning_tables.get("recent_market_summary", pd.DataFrame())
+                if recent_market_learning.empty:
+                    st.caption("No recent market-form sample yet.")
+                else:
+                    recent_market_display = build_smart_learning_display(
+                        recent_market_learning.head(10),
+                        rename_map={
+                            "market": "Market",
+                            "recent_market_picks": "Recent Picks",
+                            "recent_market_hit_rate": "Recent Hit Rate %",
+                            "recent_market_roi_per_pick": "Recent Units Per Pick",
+                            "recent_market_avg_model_prob": "Recent Avg Model %",
+                            "recent_market_avg_confidence": "Recent Avg Confidence",
+                        },
+                        percent_columns=["recent_market_hit_rate", "recent_market_avg_model_prob"],
+                        value_columns=["recent_market_roi_per_pick", "recent_market_avg_confidence"],
+                    )
+                    if "Market" in recent_market_display.columns:
+                        recent_market_display["Market"] = recent_market_display["Market"].map(prettify_market_label)
+                    st.dataframe(recent_market_display, use_container_width=True, hide_index=True)
+            with smart_tab3:
+                sportsbook_learning = smart_learning_tables["sportsbook_summary"]
+                if sportsbook_learning.empty:
+                    st.caption("No sportsbook-specific history yet.")
+                else:
+                    sportsbook_learning_display = build_smart_learning_display(
+                        sportsbook_learning.head(12),
+                        rename_map={
+                            "sportsbook": "Sportsbook",
+                            "sportsbook_picks": "Tracked Picks",
+                            "sportsbook_hit_rate": "Hit Rate %",
+                            "sportsbook_roi_per_pick": "Units Per Pick",
+                            "sportsbook_avg_model_prob": "Avg Model %",
+                            "sportsbook_avg_confidence": "Avg Confidence",
+                        },
+                        percent_columns=["sportsbook_hit_rate", "sportsbook_avg_model_prob"],
+                        value_columns=["sportsbook_roi_per_pick", "sportsbook_avg_confidence"],
+                    )
+                    st.dataframe(sportsbook_learning_display, use_container_width=True, hide_index=True)
+            with smart_tab4:
+                recent_sportsbook_learning = smart_learning_tables.get("recent_sportsbook_summary", pd.DataFrame())
+                if recent_sportsbook_learning.empty:
+                    st.caption("No recent sportsbook-form sample yet.")
+                else:
+                    recent_sportsbook_display = build_smart_learning_display(
+                        recent_sportsbook_learning.head(10),
+                        rename_map={
+                            "sportsbook": "Sportsbook",
+                            "recent_sportsbook_picks": "Recent Picks",
+                            "recent_sportsbook_hit_rate": "Recent Hit Rate %",
+                            "recent_sportsbook_roi_per_pick": "Recent Units Per Pick",
+                            "recent_sportsbook_avg_model_prob": "Recent Avg Model %",
+                            "recent_sportsbook_avg_confidence": "Recent Avg Confidence",
+                        },
+                        percent_columns=["recent_sportsbook_hit_rate", "recent_sportsbook_avg_model_prob"],
+                        value_columns=["recent_sportsbook_roi_per_pick", "recent_sportsbook_avg_confidence"],
+                    )
+                    st.dataframe(recent_sportsbook_display, use_container_width=True, hide_index=True)
+            with smart_tab5:
+                confidence_learning = smart_learning_tables["confidence_summary"]
+                if confidence_learning.empty:
+                    st.caption("No confidence-band history yet.")
+                else:
+                    confidence_learning_display = build_smart_learning_display(
+                        confidence_learning.head(12),
+                        rename_map={
+                            "confidence_bucket": "Confidence Band",
+                            "confidence_bucket_picks": "Tracked Picks",
+                            "confidence_bucket_hit_rate": "Hit Rate %",
+                            "confidence_bucket_roi_per_pick": "Units Per Pick",
+                            "confidence_bucket_avg_model_prob": "Avg Model %",
+                            "confidence_bucket_avg_confidence": "Avg Confidence",
+                        },
+                        percent_columns=["confidence_bucket_hit_rate", "confidence_bucket_avg_model_prob"],
+                        value_columns=["confidence_bucket_roi_per_pick", "confidence_bucket_avg_confidence"],
+                    )
+                    st.dataframe(confidence_learning_display, use_container_width=True, hide_index=True)
 
-        with smart_tab1:
-            market_learning = smart_learning_tables["market_summary"]
-            if market_learning.empty:
-                st.caption("No market-specific history yet.")
-            else:
-                market_learning_display = build_smart_learning_display(
-                    market_learning.head(12),
-                    rename_map={
-                        "market": "Market",
-                        "market_picks": "Tracked Picks",
-                        "market_hit_rate": "Hit Rate %",
-                        "market_roi_per_pick": "Units Per Pick",
-                        "market_avg_model_prob": "Avg Model %",
-                        "market_avg_confidence": "Avg Confidence",
-                    },
-                    percent_columns=["market_hit_rate", "market_avg_model_prob"],
-                    value_columns=["market_roi_per_pick", "market_avg_confidence"],
-                )
-                if "Market" in market_learning_display.columns:
-                    market_learning_display["Market"] = market_learning_display["Market"].map(prettify_market_label)
-                st.dataframe(market_learning_display, use_container_width=True, hide_index=True)
-
-        with smart_tab2:
-            recent_market_learning = smart_learning_tables.get("recent_market_summary", pd.DataFrame())
-            if recent_market_learning.empty:
-                st.caption("No recent market-form sample yet.")
-            else:
-                recent_market_display = build_smart_learning_display(
-                    recent_market_learning.head(10),
-                    rename_map={
-                        "market": "Market",
-                        "recent_market_picks": "Recent Picks",
-                        "recent_market_hit_rate": "Recent Hit Rate %",
-                        "recent_market_roi_per_pick": "Recent Units Per Pick",
-                        "recent_market_avg_model_prob": "Recent Avg Model %",
-                        "recent_market_avg_confidence": "Recent Avg Confidence",
-                    },
-                    percent_columns=["recent_market_hit_rate", "recent_market_avg_model_prob"],
-                    value_columns=["recent_market_roi_per_pick", "recent_market_avg_confidence"],
-                )
-                if "Market" in recent_market_display.columns:
-                    recent_market_display["Market"] = recent_market_display["Market"].map(prettify_market_label)
-                st.dataframe(recent_market_display, use_container_width=True, hide_index=True)
-
-        with smart_tab3:
-            sportsbook_learning = smart_learning_tables["sportsbook_summary"]
-            if sportsbook_learning.empty:
-                st.caption("No sportsbook-specific history yet.")
-            else:
-                sportsbook_learning_display = build_smart_learning_display(
-                    sportsbook_learning.head(12),
-                    rename_map={
-                        "sportsbook": "Sportsbook",
-                        "sportsbook_picks": "Tracked Picks",
-                        "sportsbook_hit_rate": "Hit Rate %",
-                        "sportsbook_roi_per_pick": "Units Per Pick",
-                        "sportsbook_avg_model_prob": "Avg Model %",
-                        "sportsbook_avg_confidence": "Avg Confidence",
-                    },
-                    percent_columns=["sportsbook_hit_rate", "sportsbook_avg_model_prob"],
-                    value_columns=["sportsbook_roi_per_pick", "sportsbook_avg_confidence"],
-                )
-                st.dataframe(sportsbook_learning_display, use_container_width=True, hide_index=True)
-
-        with smart_tab4:
-            recent_sportsbook_learning = smart_learning_tables.get("recent_sportsbook_summary", pd.DataFrame())
-            if recent_sportsbook_learning.empty:
-                st.caption("No recent sportsbook-form sample yet.")
-            else:
-                recent_sportsbook_display = build_smart_learning_display(
-                    recent_sportsbook_learning.head(10),
-                    rename_map={
-                        "sportsbook": "Sportsbook",
-                        "recent_sportsbook_picks": "Recent Picks",
-                        "recent_sportsbook_hit_rate": "Recent Hit Rate %",
-                        "recent_sportsbook_roi_per_pick": "Recent Units Per Pick",
-                        "recent_sportsbook_avg_model_prob": "Recent Avg Model %",
-                        "recent_sportsbook_avg_confidence": "Recent Avg Confidence",
-                    },
-                    percent_columns=["recent_sportsbook_hit_rate", "recent_sportsbook_avg_model_prob"],
-                    value_columns=["recent_sportsbook_roi_per_pick", "recent_sportsbook_avg_confidence"],
-                )
-                st.dataframe(recent_sportsbook_display, use_container_width=True, hide_index=True)
-
-        with smart_tab5:
-            confidence_learning = smart_learning_tables["confidence_summary"]
-            if confidence_learning.empty:
-                st.caption("No confidence-band history yet.")
-            else:
-                confidence_learning_display = build_smart_learning_display(
-                    confidence_learning.head(12),
-                    rename_map={
-                        "confidence_bucket": "Confidence Band",
-                        "confidence_bucket_picks": "Tracked Picks",
-                        "confidence_bucket_hit_rate": "Hit Rate %",
-                        "confidence_bucket_roi_per_pick": "Units Per Pick",
-                        "confidence_bucket_avg_model_prob": "Avg Model %",
-                        "confidence_bucket_avg_confidence": "Avg Confidence",
-                    },
-                    percent_columns=["confidence_bucket_hit_rate", "confidence_bucket_avg_model_prob"],
-                    value_columns=["confidence_bucket_roi_per_pick", "confidence_bucket_avg_confidence"],
-                )
-                st.dataframe(confidence_learning_display, use_container_width=True, hide_index=True)
-
-    st.markdown("### Source Performance")
-    if source_summary_df.empty:
-        render_empty_state(
-            "No source comparison yet",
-            "Grade picks from different workflows to compare Smart Pick Engine performance against the legacy edge workflow.",
-            tone="info",
-        )
-    else:
-        source_summary_display = source_summary_df.copy()
-        source_summary_display["source"] = source_summary_display["source"].map(format_source_label)
-        source_summary_display["hit_rate"] = (source_summary_display["hit_rate"] * 100).round(1)
-        source_summary_display["avg_model_prob"] = (source_summary_display["avg_model_prob"] * 100).round(1)
-        source_summary_display["avg_edge"] = (source_summary_display["avg_edge"] * 100).round(1)
-        source_summary_display["avg_confidence"] = source_summary_display["avg_confidence"].round(1)
-        source_summary_display["profit_units"] = source_summary_display["profit_units"].round(2)
-        source_summary_display["roi_per_pick"] = source_summary_display["roi_per_pick"].round(2)
-        source_summary_display = source_summary_display.rename(
-            columns={
-                "source": "Workflow Source",
-                "picks": "Tracked Picks",
-                "hit_rate": "Hit Rate %",
-                "avg_model_prob": "Avg Model %",
-                "avg_edge": "Avg Edge %",
-                "avg_confidence": "Avg Confidence",
-                "profit_units": "Profit Units",
-                "roi_per_pick": "Units Per Pick",
-            }
-        )
-        st.dataframe(compact_numeric_table(source_summary_display), use_container_width=True, hide_index=True)
-        snapshot_json = build_experiment_snapshot_payload(
-            graded_df=graded_df,
-            source_summary_df=source_summary_df,
-            auto_weight_profile=auto_weight_profile if "auto_weight_profile" in locals() else build_smart_weight_profile(graded_df),
-            resolved_weight_profile=resolved_weight_profile if "resolved_weight_profile" in locals() else apply_smart_weight_overrides(build_smart_weight_profile(graded_df), manual_smart_weight_overrides),
-            recommendation_title=override_recommendation_title,
-            recommendation_body=override_recommendation_body,
-        )
-        source_export_col1, source_export_col2 = st.columns(2)
-        source_export_col1.download_button(
-            "Download Experiment Snapshot JSON",
-            data=snapshot_json,
-            file_name=f"{sport_label.lower()}_smart_experiment_snapshot.json",
-            mime="application/json",
-            use_container_width=True,
-        )
-        source_export_col2.download_button(
-            "Download Source Comparison CSV",
-            data=source_summary_df.to_csv(index=False),
-            file_name=f"{sport_label.lower()}_source_performance.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-
-        auto_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_auto"].head(1)
-        manual_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_manual"].head(1)
-        legacy_row = source_summary_df[source_summary_df["source"] == "edge_scanner"].head(1)
-        smart_row = source_summary_df[source_summary_df["source"].isin(["smart_pick_engine_auto", "smart_pick_engine_manual", "smart_pick_engine"])].head(1)
-        if not smart_row.empty and not legacy_row.empty:
-            smart_row = smart_row.iloc[0]
-            legacy_row = legacy_row.iloc[0]
-            compare_col1, compare_col2, compare_col3, compare_col4 = st.columns(4)
-            compare_col1.metric(
-                "Smart Hit Rate Lift",
-                f"{(float(smart_row['hit_rate']) - float(legacy_row['hit_rate'])) * 100:+.1f} pts",
+        st.markdown("### Source Performance")
+        if source_summary_df.empty:
+            render_empty_state(
+                "No source comparison yet",
+                "Grade picks from different workflows to compare Smart Pick Engine performance against the legacy edge workflow.",
+                tone="info",
             )
-            compare_col2.metric(
-                "Smart Unit Lift",
-                f"{float(smart_row['profit_units']) - float(legacy_row['profit_units']):+.2f}u",
+        else:
+            source_summary_display = source_summary_df.copy()
+            source_summary_display["source"] = source_summary_display["source"].map(format_source_label)
+            source_summary_display["hit_rate"] = (source_summary_display["hit_rate"] * 100).round(1)
+            source_summary_display["avg_model_prob"] = (source_summary_display["avg_model_prob"] * 100).round(1)
+            source_summary_display["avg_edge"] = (source_summary_display["avg_edge"] * 100).round(1)
+            source_summary_display["avg_confidence"] = source_summary_display["avg_confidence"].round(1)
+            source_summary_display["profit_units"] = source_summary_display["profit_units"].round(2)
+            source_summary_display["roi_per_pick"] = source_summary_display["roi_per_pick"].round(2)
+            source_summary_display = source_summary_display.rename(
+                columns={
+                    "source": "Workflow Source",
+                    "picks": "Tracked Picks",
+                    "hit_rate": "Hit Rate %",
+                    "avg_model_prob": "Avg Model %",
+                    "avg_edge": "Avg Edge %",
+                    "avg_confidence": "Avg Confidence",
+                    "profit_units": "Profit Units",
+                    "roi_per_pick": "Units Per Pick",
+                }
             )
-            compare_col3.metric(
-                "Smart Units/Pick Lift",
-                f"{float(smart_row['roi_per_pick']) - float(legacy_row['roi_per_pick']):+.2f}",
+            st.dataframe(compact_numeric_table(source_summary_display), use_container_width=True, hide_index=True)
+            snapshot_json = build_experiment_snapshot_payload(
+                graded_df=graded_df,
+                source_summary_df=source_summary_df,
+                auto_weight_profile=auto_weight_profile,
+                resolved_weight_profile=resolved_weight_profile,
+                recommendation_title=override_recommendation_title,
+                recommendation_body=override_recommendation_body,
             )
-            compare_col4.metric(
-                "Sample Size",
-                f"{int(smart_row['picks'])} vs {int(legacy_row['picks'])}",
-            )
-            st.caption(
-                "This comparison uses graded picks only. As more smart-ranked picks settle, the signal here will become more reliable."
-            )
-        if not auto_row.empty and not manual_row.empty:
-            auto_row = auto_row.iloc[0]
-            manual_row = manual_row.iloc[0]
-            st.markdown("#### Auto vs Manual Smart Testing")
-            compare_mode_col1, compare_mode_col2, compare_mode_col3, compare_mode_col4 = st.columns(4)
-            compare_mode_col1.metric(
-                "Manual Hit Rate Lift",
-                f"{(float(manual_row['hit_rate']) - float(auto_row['hit_rate'])) * 100:+.1f} pts",
-            )
-            compare_mode_col2.metric(
-                "Manual Units/Pick Lift",
-                f"{float(manual_row['roi_per_pick']) - float(auto_row['roi_per_pick']):+.2f}",
-            )
-            compare_mode_col3.metric(
-                "Manual Unit Lift",
-                f"{float(manual_row['profit_units']) - float(auto_row['profit_units']):+.2f}u",
-            )
-            compare_mode_col4.metric(
-                "Sample Size",
-                f"{int(manual_row['picks'])} vs {int(auto_row['picks'])}",
-            )
-            st.caption("Use this section to compare whether your manual smart-engine mix is actually outperforming the auto-tuned profile.")
-
-        experiment_log = graded_df[graded_df["source"].isin(["smart_pick_engine_auto", "smart_pick_engine_manual", "edge_scanner"])].copy() if "source" in graded_df.columns else pd.DataFrame()
-        if not experiment_log.empty:
-            st.markdown("#### Experiment Log")
-            experiment_log = prefer_player_display(annotate_player_display(experiment_log.copy()))
-            experiment_log["source"] = experiment_log["source"].map(format_source_label)
-            if {"pick", "line"}.intersection(experiment_log.columns):
-                experiment_log["bet"] = experiment_log.apply(format_bet_label, axis=1)
-            experiment_log["summary"] = experiment_log.apply(
-                lambda row: " | ".join(
-                    part
-                    for part in [
-                        str(row.get("source", "")).strip(),
-                        str(row.get("player", "")).strip(),
-                        str(row.get("bet", "")).strip(),
-                    ]
-                    if part and part.lower() != "nan"
-                ),
-                axis=1,
-            )
-            if "model_prob" in experiment_log.columns:
-                experiment_log["model_prob"] = (pd.to_numeric(experiment_log["model_prob"], errors="coerce") * 100).round(1)
-            if "edge" in experiment_log.columns:
-                experiment_log["edge"] = (pd.to_numeric(experiment_log["edge"], errors="coerce") * 100).round(1)
-            if "profit_units" in experiment_log.columns:
-                experiment_log["profit_units"] = pd.to_numeric(experiment_log["profit_units"], errors="coerce").round(2)
-            experiment_log_columns = [
-                col
-                for col in ["resolved_at", "summary", "grade", "profit_units", "model_prob", "edge", "confidence"]
-                if col in experiment_log.columns
-            ]
-            st.dataframe(
-                compact_numeric_table(experiment_log[experiment_log_columns].sort_values("resolved_at", ascending=False).head(40)),
+            source_export_col1, source_export_col2 = st.columns(2)
+            source_export_col1.download_button(
+                "Download Experiment Snapshot JSON",
+                data=snapshot_json,
+                file_name=f"{sport_label.lower()}_smart_experiment_snapshot.json",
+                mime="application/json",
                 use_container_width=True,
-                hide_index=True,
             )
-            st.download_button(
-                "Download Experiment Log CSV",
-                data=experiment_log.sort_values("resolved_at", ascending=False).to_csv(index=False),
-                file_name=f"{sport_label.lower()}_experiment_log.csv",
+            source_export_col2.download_button(
+                "Download Source Comparison CSV",
+                data=source_summary_df.to_csv(index=False),
+                file_name=f"{sport_label.lower()}_source_performance.csv",
                 mime="text/csv",
                 use_container_width=True,
             )
 
-        cumulative_source_profit, rolling_source_hit_rate = build_true_source_timeseries(graded_df)
-        trend_tab1, trend_tab2 = st.tabs(["Cumulative Units", "Rolling Hit Rate"])
-        with trend_tab1:
-            if cumulative_source_profit.empty:
-                st.caption("Not enough resolved source history yet for a cumulative trend chart.")
-            else:
-                cumulative_chart = cumulative_source_profit.copy()
-                cumulative_chart.columns = [format_source_label(str(col)) for col in cumulative_chart.columns]
-                st.line_chart(cumulative_chart)
-        with trend_tab2:
-            if rolling_source_hit_rate.empty:
-                st.caption("Not enough resolved source history yet for a rolling hit-rate chart.")
-            else:
-                rolling_chart = rolling_source_hit_rate.copy()
-                rolling_chart.columns = [format_source_label(str(col)) for col in rolling_chart.columns]
-                st.line_chart(rolling_chart)
-                st.caption("Rolling hit rate uses the last 10 graded picks for each source.")
+            auto_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_auto"].head(1)
+            manual_row = source_summary_df[source_summary_df["source"] == "smart_pick_engine_manual"].head(1)
+            legacy_row = source_summary_df[source_summary_df["source"] == "edge_scanner"].head(1)
+            smart_row = source_summary_df[source_summary_df["source"].isin(["smart_pick_engine_auto", "smart_pick_engine_manual", "smart_pick_engine"])].head(1)
+            if not smart_row.empty and not legacy_row.empty:
+                smart_row = smart_row.iloc[0]
+                legacy_row = legacy_row.iloc[0]
+                compare_col1, compare_col2, compare_col3, compare_col4 = st.columns(4)
+                compare_col1.metric("Smart Hit Rate Lift", f"{(float(smart_row['hit_rate']) - float(legacy_row['hit_rate'])) * 100:+.1f} pts")
+                compare_col2.metric("Smart Unit Lift", f"{float(smart_row['profit_units']) - float(legacy_row['profit_units']):+.2f}u")
+                compare_col3.metric("Smart Units/Pick Lift", f"{float(smart_row['roi_per_pick']) - float(legacy_row['roi_per_pick']):+.2f}")
+                compare_col4.metric("Sample Size", f"{int(smart_row['picks'])} vs {int(legacy_row['picks'])}")
+                st.caption("This comparison uses graded picks only. As more smart-ranked picks settle, the signal here will become more reliable.")
+            if not auto_row.empty and not manual_row.empty:
+                auto_row = auto_row.iloc[0]
+                manual_row = manual_row.iloc[0]
+                st.markdown("#### Auto vs Manual Smart Testing")
+                compare_mode_col1, compare_mode_col2, compare_mode_col3, compare_mode_col4 = st.columns(4)
+                compare_mode_col1.metric("Manual Hit Rate Lift", f"{(float(manual_row['hit_rate']) - float(auto_row['hit_rate'])) * 100:+.1f} pts")
+                compare_mode_col2.metric("Manual Units/Pick Lift", f"{float(manual_row['roi_per_pick']) - float(auto_row['roi_per_pick']):+.2f}")
+                compare_mode_col3.metric("Manual Unit Lift", f"{float(manual_row['profit_units']) - float(auto_row['profit_units']):+.2f}u")
+                compare_mode_col4.metric("Sample Size", f"{int(manual_row['picks'])} vs {int(auto_row['picks'])}")
+                st.caption("Use this section to compare whether your manual smart-engine mix is actually outperforming the auto-tuned profile.")
 
-    weekly_review = build_weekly_model_review(graded_df)
-    monthly_review = build_monthly_model_review(graded_df)
-    recommendation_cards = build_model_recommendation_cards(weekly_review, monthly_review, sport_label=sport_label)
-    review_action_checklist = build_review_action_checklist(weekly_review, monthly_review)
-    render_recommendation_cards(recommendation_cards, "Recommendation Cards")
-    render_review_action_checklist(
-        checklist=review_action_checklist,
-        sport_label=sport_label,
-        live_legs_session_key=live_legs_session_key,
-        live_min_conf_session_key=live_min_conf_session_key,
-        live_same_player_session_key=live_same_player_session_key,
-        demo_style_session_key=demo_style_session_key,
-        demo_same_team_session_key=demo_same_team_session_key,
-    )
-    render_period_model_review(weekly_review, "Weekly Model Review")
-    render_period_model_review(monthly_review, "Monthly Model Review")
-    weekly_review_json = json.dumps(
-        {
-            "generated_at_utc": pd.Timestamp.utcnow().isoformat(),
-            "sport_label": sport_label,
-            "recommendation_cards": recommendation_cards,
-            "action_checklist": review_action_checklist,
-            "weekly_review": {
-                **weekly_review,
-                "source_breakdown": weekly_review.get("source_breakdown", pd.DataFrame()).to_dict(orient="records")
-                if isinstance(weekly_review.get("source_breakdown"), pd.DataFrame)
-                else weekly_review.get("source_breakdown"),
-                "market_breakdown": weekly_review.get("market_breakdown", pd.DataFrame()).to_dict(orient="records")
-                if isinstance(weekly_review.get("market_breakdown"), pd.DataFrame)
-                else weekly_review.get("market_breakdown"),
-            },
-            "monthly_review": {
-                **monthly_review,
-                "source_breakdown": monthly_review.get("source_breakdown", pd.DataFrame()).to_dict(orient="records")
-                if isinstance(monthly_review.get("source_breakdown"), pd.DataFrame)
-                else monthly_review.get("source_breakdown"),
-                "market_breakdown": monthly_review.get("market_breakdown", pd.DataFrame()).to_dict(orient="records")
-                if isinstance(monthly_review.get("market_breakdown"), pd.DataFrame)
-                else monthly_review.get("market_breakdown"),
-            },
-        },
-        indent=2,
-        default=str,
-    )
-    st.download_button(
-        "Download Weekly Review JSON",
-        data=weekly_review_json,
-        file_name=f"{sport_label.lower()}_weekly_model_review.json",
-        mime="application/json",
-        use_container_width=True,
-    )
+            experiment_log = graded_df[graded_df["source"].isin(["smart_pick_engine_auto", "smart_pick_engine_manual", "edge_scanner"])].copy() if "source" in graded_df.columns else pd.DataFrame()
+            if not experiment_log.empty:
+                st.markdown("#### Experiment Log")
+                experiment_log = prefer_player_display(annotate_player_display(experiment_log.copy()))
+                experiment_log["source"] = experiment_log["source"].map(format_source_label)
+                if {"pick", "line"}.intersection(experiment_log.columns):
+                    experiment_log["bet"] = experiment_log.apply(format_bet_label, axis=1)
+                experiment_log["summary"] = experiment_log.apply(
+                    lambda row: " | ".join(
+                        part
+                        for part in [
+                            str(row.get("source", "")).strip(),
+                            str(row.get("player", "")).strip(),
+                            str(row.get("bet", "")).strip(),
+                        ]
+                        if part and part.lower() != "nan"
+                    ),
+                    axis=1,
+                )
+                if "model_prob" in experiment_log.columns:
+                    experiment_log["model_prob"] = (pd.to_numeric(experiment_log["model_prob"], errors="coerce") * 100).round(1)
+                if "edge" in experiment_log.columns:
+                    experiment_log["edge"] = (pd.to_numeric(experiment_log["edge"], errors="coerce") * 100).round(1)
+                if "profit_units" in experiment_log.columns:
+                    experiment_log["profit_units"] = pd.to_numeric(experiment_log["profit_units"], errors="coerce").round(2)
+                experiment_log_columns = [col for col in ["resolved_at", "summary", "grade", "profit_units", "model_prob", "edge", "confidence"] if col in experiment_log.columns]
+                st.dataframe(
+                    compact_numeric_table(experiment_log[experiment_log_columns].sort_values("resolved_at", ascending=False).head(40)),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                st.download_button(
+                    "Download Experiment Log CSV",
+                    data=experiment_log.sort_values("resolved_at", ascending=False).to_csv(index=False),
+                    file_name=f"{sport_label.lower()}_experiment_log.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
 
+            cumulative_source_profit, rolling_source_hit_rate = build_true_source_timeseries(graded_df)
+            trend_tab1, trend_tab2 = st.tabs(["Cumulative Units", "Rolling Hit Rate"])
+            with trend_tab1:
+                if cumulative_source_profit.empty:
+                    st.caption("Not enough resolved source history yet for a cumulative trend chart.")
+                else:
+                    cumulative_chart = cumulative_source_profit.copy()
+                    cumulative_chart.columns = [format_source_label(str(col)) for col in cumulative_chart.columns]
+                    st.line_chart(cumulative_chart)
+            with trend_tab2:
+                if rolling_source_hit_rate.empty:
+                    st.caption("Not enough resolved source history yet for a rolling hit-rate chart.")
+                else:
+                    rolling_chart = rolling_source_hit_rate.copy()
+                    rolling_chart.columns = [format_source_label(str(col)) for col in rolling_chart.columns]
+                    st.line_chart(rolling_chart)
+                    st.caption("Rolling hit rate uses the last 10 graded picks for each source.")
+
+        weekly_review = build_weekly_model_review(graded_df)
+        monthly_review = build_monthly_model_review(graded_df)
+        recommendation_cards = build_model_recommendation_cards(weekly_review, monthly_review, sport_label=sport_label)
+        review_action_checklist = build_review_action_checklist(weekly_review, monthly_review)
+        render_recommendation_cards(recommendation_cards, "Recommendation Cards")
+        render_review_action_checklist(
+            checklist=review_action_checklist,
+            sport_label=sport_label,
+            live_legs_session_key=live_legs_session_key,
+            live_min_conf_session_key=live_min_conf_session_key,
+            live_same_player_session_key=live_same_player_session_key,
+            demo_style_session_key=demo_style_session_key,
+            demo_same_team_session_key=demo_same_team_session_key,
+        )
+        render_period_model_review(weekly_review, "Weekly Model Review")
+        render_period_model_review(monthly_review, "Monthly Model Review")
+        weekly_review_json = json.dumps(
+            {
+                "generated_at_utc": pd.Timestamp.utcnow().isoformat(),
+                "sport_label": sport_label,
+                "recommendation_cards": recommendation_cards,
+                "action_checklist": review_action_checklist,
+                "weekly_review": {
+                    **weekly_review,
+                    "source_breakdown": weekly_review.get("source_breakdown", pd.DataFrame()).to_dict(orient="records")
+                    if isinstance(weekly_review.get("source_breakdown"), pd.DataFrame)
+                    else weekly_review.get("source_breakdown"),
+                    "market_breakdown": weekly_review.get("market_breakdown", pd.DataFrame()).to_dict(orient="records")
+                    if isinstance(weekly_review.get("market_breakdown"), pd.DataFrame)
+                    else weekly_review.get("market_breakdown"),
+                },
+                "monthly_review": {
+                    **monthly_review,
+                    "source_breakdown": monthly_review.get("source_breakdown", pd.DataFrame()).to_dict(orient="records")
+                    if isinstance(monthly_review.get("source_breakdown"), pd.DataFrame)
+                    else monthly_review.get("source_breakdown"),
+                    "market_breakdown": monthly_review.get("market_breakdown", pd.DataFrame()).to_dict(orient="records")
+                    if isinstance(monthly_review.get("market_breakdown"), pd.DataFrame)
+                    else monthly_review.get("market_breakdown"),
+                },
+            },
+            indent=2,
+            default=str,
+        )
+        st.download_button(
+            "Download Weekly Review JSON",
+            data=weekly_review_json,
+            file_name=f"{sport_label.lower()}_weekly_model_review.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+    else:
+        st.markdown("### Learning & Review")
+        st.info("Simple view keeps ticket review, settlement, and bankroll tracking visible here. Switch to `Pro` to open smart learning, source experiments, recommendation cards, and weekly/monthly model review.")
     if auto_settle_payload:
         recorded_at = str(auto_settle_payload.get("recorded_at") or "")
         summary_bits = []
@@ -6125,140 +6115,143 @@ with tab5:
 
 with tab6:
     render_section_header("Backtest", "Review true-results performance, calibration, CLV proxy signals, and profit trends.")
-    backtest_focus_target = st.session_state.get("backtest_section_focus_target", "")
-    backtest_jump_col1, backtest_jump_col2 = st.columns(2)
-    if backtest_jump_col1.button("Jump to True Results", key="backtest_jump_true_results", use_container_width=True):
-        set_backtest_focus("true_results")
-        st.rerun()
-    if backtest_jump_col2.button("Jump to CLV Diagnostics", key="backtest_jump_clv", use_container_width=True):
-        set_backtest_focus("clv_diagnostics")
-        st.rerun()
-    true_backtest_df = pd.DataFrame()
-    clv_backtest_df = pd.DataFrame()
-
-    if live_sport_keys:
-        true_backtest_df = build_true_backtest(live_sport_keys)
-        clv_backtest_df = build_clv_backtest(live_sport_keys)
-
-    if true_backtest_df.empty and clv_backtest_df.empty:
-        render_empty_state("Not enough backtest history yet", "Build more graded results or live line history before diagnostics can populate for this sport.", tone="info")
+    if is_simple_mode:
+        st.info("Simple view keeps Backtest trimmed down so the app feels easier to operate. Switch to `Pro` when you want true-results diagnostics, calibration tables, and CLV review.")
     else:
-        if not true_backtest_df.empty:
-            st.markdown("### True Results Backtest")
-            if backtest_focus_target == "true_results":
-                st.info("Backtest jump is focused on True Results diagnostics below.")
-            total_picks = len(true_backtest_df)
-            hit_rate = true_backtest_df["won"].mean()
-            avg_edge = true_backtest_df["edge"].mean()
-            total_profit_units = true_backtest_df["profit_units"].sum()
+        backtest_focus_target = st.session_state.get("backtest_section_focus_target", "")
+        backtest_jump_col1, backtest_jump_col2 = st.columns(2)
+        if backtest_jump_col1.button("Jump to True Results", key="backtest_jump_true_results", use_container_width=True):
+            set_backtest_focus("true_results")
+            st.rerun()
+        if backtest_jump_col2.button("Jump to CLV Diagnostics", key="backtest_jump_clv", use_container_width=True):
+            set_backtest_focus("clv_diagnostics")
+            st.rerun()
+        true_backtest_df = pd.DataFrame()
+        clv_backtest_df = pd.DataFrame()
 
-            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-            metric_col1.metric("Graded Picks", f"{total_picks}")
-            metric_col2.metric("Hit Rate", f"{hit_rate:.1%}")
-            metric_col3.metric("Avg Edge", f"{avg_edge:.1%}")
-            metric_col4.metric("Profit Units", f"{total_profit_units:.2f}")
+        if live_sport_keys:
+            true_backtest_df = build_true_backtest(live_sport_keys)
+            clv_backtest_df = build_clv_backtest(live_sport_keys)
 
-            calibration_df = build_true_calibration_summary(true_backtest_df)
-            if not calibration_df.empty:
-                st.markdown("#### Probability Buckets")
-                display_calibration = calibration_df.copy()
-                display_calibration["avg_model_prob"] = (display_calibration["avg_model_prob"] * 100).round(2)
-                display_calibration["hit_rate"] = (display_calibration["hit_rate"] * 100).round(2)
-                display_calibration["avg_edge"] = (display_calibration["avg_edge"] * 100).round(2)
-                display_calibration["profit_units"] = display_calibration["profit_units"].round(3)
-                st.dataframe(compact_numeric_table(display_calibration), use_container_width=True)
-
-                calibration_chart = calibration_df.copy()
-                calibration_chart["prob_bucket"] = calibration_chart["prob_bucket"].astype(str)
-                calibration_chart = calibration_chart.set_index("prob_bucket")[["avg_model_prob", "hit_rate"]]
-                st.line_chart(calibration_chart)
-
-            market_summary_df = build_true_market_summary(true_backtest_df)
-            if not market_summary_df.empty:
-                st.markdown("#### Market Breakdown")
-                display_market_summary = market_summary_df.copy()
-                display_market_summary["hit_rate"] = (display_market_summary["hit_rate"] * 100).round(2)
-                display_market_summary["avg_model_prob"] = (display_market_summary["avg_model_prob"] * 100).round(2)
-                display_market_summary["avg_edge"] = (display_market_summary["avg_edge"] * 100).round(2)
-                display_market_summary["profit_units"] = display_market_summary["profit_units"].round(3)
-                st.dataframe(compact_numeric_table(display_market_summary), use_container_width=True)
-
-            sportsbook_summary_df = build_true_sportsbook_summary(true_backtest_df)
-            if not sportsbook_summary_df.empty:
-                st.markdown("#### Sportsbook Breakdown")
-                display_sportsbook_summary = sportsbook_summary_df.copy()
-                display_sportsbook_summary["hit_rate"] = (display_sportsbook_summary["hit_rate"] * 100).round(2)
-                display_sportsbook_summary["avg_edge"] = (display_sportsbook_summary["avg_edge"] * 100).round(2)
-                display_sportsbook_summary["profit_units"] = display_sportsbook_summary["profit_units"].round(3)
-                st.dataframe(compact_numeric_table(display_sportsbook_summary), use_container_width=True)
-
-            confidence_summary_df = build_true_confidence_summary(true_backtest_df)
-            if not confidence_summary_df.empty:
-                st.markdown("#### Confidence Breakdown")
-                display_confidence_summary = confidence_summary_df.copy()
-                display_confidence_summary["hit_rate"] = (display_confidence_summary["hit_rate"] * 100).round(2)
-                display_confidence_summary["avg_edge"] = (display_confidence_summary["avg_edge"] * 100).round(2)
-                display_confidence_summary["profit_units"] = display_confidence_summary["profit_units"].round(3)
-                st.dataframe(compact_numeric_table(display_confidence_summary), use_container_width=True)
-
-                confidence_chart = confidence_summary_df.copy()
-                confidence_chart["confidence_bucket"] = confidence_chart["confidence_bucket"].astype(str)
-                confidence_chart = confidence_chart.set_index("confidence_bucket")[["hit_rate", "profit_units"]]
-                st.bar_chart(confidence_chart)
-
-            true_display = true_backtest_df[
-                [
-                    "player",
-                    "market",
-                    "sportsbook",
-                    "pick",
-                    "line",
-                    "actual_value",
-                    "winning_side",
-                    "grade",
-                    "profit_units",
-                    "model_prob",
-                    "edge",
-                ]
-            ].copy()
-            true_display["model_prob"] = (true_display["model_prob"] * 100).round(2)
-            true_display["edge"] = (true_display["edge"] * 100).round(2)
-            true_display["profit_units"] = true_display["profit_units"].round(3)
-            st.dataframe(compact_numeric_table(true_display.head(200)), use_container_width=True)
-
-        if not clv_backtest_df.empty:
-            st.markdown("### CLV Proxy Diagnostics")
-            if backtest_focus_target == "clv_diagnostics":
-                st.info("Backtest jump is focused on CLV proxy diagnostics below.")
-            clv_hit_rate = clv_backtest_df["clv_win"].mean()
-            avg_line_move = clv_backtest_df["line_move"].mean()
-            avg_edge = clv_backtest_df["edge"].mean()
-
-            metric_col1, metric_col2, metric_col3 = st.columns(3)
-            metric_col1.metric("Tracked CLV Rows", f"{len(clv_backtest_df)}")
-            metric_col2.metric("CLV Hit Rate", f"{clv_hit_rate:.1%}")
-            metric_col3.metric("Avg Line Move", f"{avg_line_move:.3f}")
-
-            calibration_df = build_calibration_summary(clv_backtest_df)
-            if not calibration_df.empty:
-                display_calibration = calibration_df.copy()
-                display_calibration["prob_bucket"] = display_calibration["prob_bucket"].map(format_probability_bucket_label)
-                display_calibration["avg_model_prob"] = (display_calibration["avg_model_prob"] * 100).round(2)
-                display_calibration["clv_hit_rate"] = (display_calibration["clv_hit_rate"] * 100).round(2)
-                display_calibration["avg_edge"] = (display_calibration["avg_edge"] * 100).round(2)
-                display_calibration["avg_line_move"] = display_calibration["avg_line_move"].round(3)
-                display_calibration = display_calibration.rename(
-                    columns={
-                        "prob_bucket": "Model Probability Range",
-                        "picks": "Tracked Picks",
-                        "avg_model_prob": "Avg Model %",
-                        "clv_hit_rate": "CLV Hit %",
-                        "avg_edge": "Avg Edge %",
-                        "avg_line_move": "Avg Line Move",
-                    }
-                )
-                st.dataframe(compact_numeric_table(display_calibration), use_container_width=True, hide_index=True)
-
+        if true_backtest_df.empty and clv_backtest_df.empty:
+            render_empty_state("Not enough backtest history yet", "Build more graded results or live line history before diagnostics can populate for this sport.", tone="info")
+        else:
+            if not true_backtest_df.empty:
+                st.markdown("### True Results Backtest")
+                if backtest_focus_target == "true_results":
+                    st.info("Backtest jump is focused on True Results diagnostics below.")
+                total_picks = len(true_backtest_df)
+                hit_rate = true_backtest_df["won"].mean()
+                avg_edge = true_backtest_df["edge"].mean()
+                total_profit_units = true_backtest_df["profit_units"].sum()
+    
+                metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+                metric_col1.metric("Graded Picks", f"{total_picks}")
+                metric_col2.metric("Hit Rate", f"{hit_rate:.1%}")
+                metric_col3.metric("Avg Edge", f"{avg_edge:.1%}")
+                metric_col4.metric("Profit Units", f"{total_profit_units:.2f}")
+    
+                calibration_df = build_true_calibration_summary(true_backtest_df)
+                if not calibration_df.empty:
+                    st.markdown("#### Probability Buckets")
+                    display_calibration = calibration_df.copy()
+                    display_calibration["avg_model_prob"] = (display_calibration["avg_model_prob"] * 100).round(2)
+                    display_calibration["hit_rate"] = (display_calibration["hit_rate"] * 100).round(2)
+                    display_calibration["avg_edge"] = (display_calibration["avg_edge"] * 100).round(2)
+                    display_calibration["profit_units"] = display_calibration["profit_units"].round(3)
+                    st.dataframe(compact_numeric_table(display_calibration), use_container_width=True)
+    
+                    calibration_chart = calibration_df.copy()
+                    calibration_chart["prob_bucket"] = calibration_chart["prob_bucket"].astype(str)
+                    calibration_chart = calibration_chart.set_index("prob_bucket")[["avg_model_prob", "hit_rate"]]
+                    st.line_chart(calibration_chart)
+    
+                market_summary_df = build_true_market_summary(true_backtest_df)
+                if not market_summary_df.empty:
+                    st.markdown("#### Market Breakdown")
+                    display_market_summary = market_summary_df.copy()
+                    display_market_summary["hit_rate"] = (display_market_summary["hit_rate"] * 100).round(2)
+                    display_market_summary["avg_model_prob"] = (display_market_summary["avg_model_prob"] * 100).round(2)
+                    display_market_summary["avg_edge"] = (display_market_summary["avg_edge"] * 100).round(2)
+                    display_market_summary["profit_units"] = display_market_summary["profit_units"].round(3)
+                    st.dataframe(compact_numeric_table(display_market_summary), use_container_width=True)
+    
+                sportsbook_summary_df = build_true_sportsbook_summary(true_backtest_df)
+                if not sportsbook_summary_df.empty:
+                    st.markdown("#### Sportsbook Breakdown")
+                    display_sportsbook_summary = sportsbook_summary_df.copy()
+                    display_sportsbook_summary["hit_rate"] = (display_sportsbook_summary["hit_rate"] * 100).round(2)
+                    display_sportsbook_summary["avg_edge"] = (display_sportsbook_summary["avg_edge"] * 100).round(2)
+                    display_sportsbook_summary["profit_units"] = display_sportsbook_summary["profit_units"].round(3)
+                    st.dataframe(compact_numeric_table(display_sportsbook_summary), use_container_width=True)
+    
+                confidence_summary_df = build_true_confidence_summary(true_backtest_df)
+                if not confidence_summary_df.empty:
+                    st.markdown("#### Confidence Breakdown")
+                    display_confidence_summary = confidence_summary_df.copy()
+                    display_confidence_summary["hit_rate"] = (display_confidence_summary["hit_rate"] * 100).round(2)
+                    display_confidence_summary["avg_edge"] = (display_confidence_summary["avg_edge"] * 100).round(2)
+                    display_confidence_summary["profit_units"] = display_confidence_summary["profit_units"].round(3)
+                    st.dataframe(compact_numeric_table(display_confidence_summary), use_container_width=True)
+    
+                    confidence_chart = confidence_summary_df.copy()
+                    confidence_chart["confidence_bucket"] = confidence_chart["confidence_bucket"].astype(str)
+                    confidence_chart = confidence_chart.set_index("confidence_bucket")[["hit_rate", "profit_units"]]
+                    st.bar_chart(confidence_chart)
+    
+                true_display = true_backtest_df[
+                    [
+                        "player",
+                        "market",
+                        "sportsbook",
+                        "pick",
+                        "line",
+                        "actual_value",
+                        "winning_side",
+                        "grade",
+                        "profit_units",
+                        "model_prob",
+                        "edge",
+                    ]
+                ].copy()
+                true_display["model_prob"] = (true_display["model_prob"] * 100).round(2)
+                true_display["edge"] = (true_display["edge"] * 100).round(2)
+                true_display["profit_units"] = true_display["profit_units"].round(3)
+                st.dataframe(compact_numeric_table(true_display.head(200)), use_container_width=True)
+    
+            if not clv_backtest_df.empty:
+                st.markdown("### CLV Proxy Diagnostics")
+                if backtest_focus_target == "clv_diagnostics":
+                    st.info("Backtest jump is focused on CLV proxy diagnostics below.")
+                clv_hit_rate = clv_backtest_df["clv_win"].mean()
+                avg_line_move = clv_backtest_df["line_move"].mean()
+                avg_edge = clv_backtest_df["edge"].mean()
+    
+                metric_col1, metric_col2, metric_col3 = st.columns(3)
+                metric_col1.metric("Tracked CLV Rows", f"{len(clv_backtest_df)}")
+                metric_col2.metric("CLV Hit Rate", f"{clv_hit_rate:.1%}")
+                metric_col3.metric("Avg Line Move", f"{avg_line_move:.3f}")
+    
+                calibration_df = build_calibration_summary(clv_backtest_df)
+                if not calibration_df.empty:
+                    display_calibration = calibration_df.copy()
+                    display_calibration["prob_bucket"] = display_calibration["prob_bucket"].map(format_probability_bucket_label)
+                    display_calibration["avg_model_prob"] = (display_calibration["avg_model_prob"] * 100).round(2)
+                    display_calibration["clv_hit_rate"] = (display_calibration["clv_hit_rate"] * 100).round(2)
+                    display_calibration["avg_edge"] = (display_calibration["avg_edge"] * 100).round(2)
+                    display_calibration["avg_line_move"] = display_calibration["avg_line_move"].round(3)
+                    display_calibration = display_calibration.rename(
+                        columns={
+                            "prob_bucket": "Model Probability Range",
+                            "picks": "Tracked Picks",
+                            "avg_model_prob": "Avg Model %",
+                            "clv_hit_rate": "CLV Hit %",
+                            "avg_edge": "Avg Edge %",
+                            "avg_line_move": "Avg Line Move",
+                        }
+                    )
+                    st.dataframe(compact_numeric_table(display_calibration), use_container_width=True, hide_index=True)
+    
 with tab7:
     render_section_header("Stats Import", "Feed the hybrid model with provider-derived history, optional APIs, or your own CSV snapshots.")
     st.caption("Upload player stat snapshots so the hybrid projection model can use a non-odds anchor.")
