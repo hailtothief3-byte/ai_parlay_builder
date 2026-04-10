@@ -111,6 +111,8 @@ def build_smart_pick_profile(graded_df: pd.DataFrame) -> dict[str, object]:
             "market_summary": pd.DataFrame(),
             "sportsbook_summary": pd.DataFrame(),
             "confidence_summary": pd.DataFrame(),
+            "recent_market_summary": pd.DataFrame(),
+            "recent_sportsbook_summary": pd.DataFrame(),
         }
 
     history = _coerce_numeric(
@@ -240,8 +242,8 @@ def build_smart_learning_tables(graded_df: pd.DataFrame) -> dict[str, pd.DataFra
     market_summary = profile["market_summary"].copy()
     sportsbook_summary = profile["sportsbook_summary"].copy()
     confidence_summary = profile["confidence_summary"].copy()
-    recent_market_summary = profile["recent_market_summary"].copy()
-    recent_sportsbook_summary = profile["recent_sportsbook_summary"].copy()
+    recent_market_summary = profile.get("recent_market_summary", pd.DataFrame()).copy()
+    recent_sportsbook_summary = profile.get("recent_sportsbook_summary", pd.DataFrame()).copy()
 
     if not market_summary.empty:
         market_summary = market_summary.sort_values(
@@ -437,10 +439,12 @@ def score_smart_picks(
         scored = scored.merge(profile["sportsbook_summary"], on="sportsbook", how="left")
     if not profile["confidence_summary"].empty:
         scored = scored.merge(profile["confidence_summary"], on="confidence_bucket", how="left")
-    if not profile["recent_market_summary"].empty and "market" in scored.columns:
-        scored = scored.merge(profile["recent_market_summary"], on="market", how="left")
-    if not profile["recent_sportsbook_summary"].empty and "sportsbook" in scored.columns:
-        scored = scored.merge(profile["recent_sportsbook_summary"], on="sportsbook", how="left")
+    recent_market_summary = profile.get("recent_market_summary", pd.DataFrame())
+    recent_sportsbook_summary = profile.get("recent_sportsbook_summary", pd.DataFrame())
+    if not recent_market_summary.empty and "market" in scored.columns:
+        scored = scored.merge(recent_market_summary, on="market", how="left")
+    if not recent_sportsbook_summary.empty and "sportsbook" in scored.columns:
+        scored = scored.merge(recent_sportsbook_summary, on="sportsbook", how="left")
 
     overall_hit_rate = float(summary["overall_hit_rate"])
     overall_roi_per_pick = float(summary["overall_roi_per_pick"])
