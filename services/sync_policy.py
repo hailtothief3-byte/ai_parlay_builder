@@ -125,4 +125,9 @@ def sync_allowed(provider: str, scope: str) -> tuple[bool, str]:
 
     remaining = next_allowed - now
     minutes = max(1, int(remaining.total_seconds() // 60))
-    return False, f"Sync cooldown active for `{scope}`. Try again in about {minutes} minute(s)."
+    if minutes < 60:
+        wait_label = f"{minutes} minute{'s' if minutes != 1 else ''}"
+    else:
+        hours = round(minutes / 60, 1)
+        wait_label = f"{hours:g} hour{'s' if hours != 1 else ''}"
+    return False, f"Sync cooldown active for `{scope}`. Try again in about {wait_label}."

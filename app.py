@@ -519,6 +519,19 @@ def build_market_pulse_summary(edges_df: pd.DataFrame, watchlist_alerts_df: pd.D
     }
 
 
+def format_elapsed_minutes(minutes: int) -> str:
+    minutes = max(int(minutes or 0), 0)
+    if minutes < 60:
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    hours = minutes / 60
+    if minutes < 24 * 60:
+        rounded_hours = round(hours, 1)
+        return f"{rounded_hours:g} hour{'s' if rounded_hours != 1 else ''}"
+    days = minutes / (24 * 60)
+    rounded_days = round(days, 1)
+    return f"{rounded_days:g} day{'s' if rounded_days != 1 else ''}"
+
+
 def build_sync_freshness_summary(last_sync, sync_enabled: bool) -> dict[str, str]:
     if not sync_enabled:
         return {
@@ -534,19 +547,21 @@ def build_sync_freshness_summary(last_sync, sync_enabled: bool) -> dict[str, str
         ts = pd.to_datetime(last_sync, utc=True)
         now = pd.Timestamp.now(tz="UTC")
         minutes = max(int((now - ts).total_seconds() // 60), 0)
+        elapsed_label = format_elapsed_minutes(minutes)
         if minutes <= 20:
             return {
                 "title": "Fresh sync",
-                "body": f"Last sync landed about {minutes} minute(s) ago, so the board is reasonably fresh for live scanning.",
+                "body": f"Last sync landed about {elapsed_label} ago, so the board is reasonably fresh for live scanning.",
             }
         if minutes <= 90:
             return {
                 "title": "Aging sync",
-                "body": f"Last sync was about {minutes} minute(s) ago. The board is still usable, but a refresh would tighten the read.",
+                "body": f"Last sync was about {elapsed_label} ago. The board is still usable, but a refresh would tighten the read.",
             }
+        stale_action = " A fresh sync is the best next move before trusting live prices." if minutes >= 6 * 60 else ""
         return {
             "title": "Stale board risk",
-            "body": f"Last sync was about {minutes} minute(s) ago, so live prices may have drifted away from the current board state.",
+            "body": f"Last sync was about {elapsed_label} ago, so live prices may have drifted away from the current board state.{stale_action}",
         }
     except Exception:
         return {
