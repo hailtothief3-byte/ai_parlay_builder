@@ -433,12 +433,15 @@ def score_smart_picks(
         scored["confidence"] if "confidence" in scored.columns else pd.Series(index=scored.index, dtype=float)
     )
 
-    if not profile["market_summary"].empty and "market" in scored.columns:
-        scored = scored.merge(profile["market_summary"], on="market", how="left")
-    if not profile["sportsbook_summary"].empty and "sportsbook" in scored.columns:
-        scored = scored.merge(profile["sportsbook_summary"], on="sportsbook", how="left")
-    if not profile["confidence_summary"].empty:
-        scored = scored.merge(profile["confidence_summary"], on="confidence_bucket", how="left")
+    market_summary = profile.get("market_summary", pd.DataFrame())
+    sportsbook_summary = profile.get("sportsbook_summary", pd.DataFrame())
+    confidence_summary = profile.get("confidence_summary", pd.DataFrame())
+    if not market_summary.empty and "market" in scored.columns:
+        scored = scored.merge(market_summary, on="market", how="left")
+    if not sportsbook_summary.empty and "sportsbook" in scored.columns:
+        scored = scored.merge(sportsbook_summary, on="sportsbook", how="left")
+    if not confidence_summary.empty:
+        scored = scored.merge(confidence_summary, on="confidence_bucket", how="left")
     recent_market_summary = profile.get("recent_market_summary", pd.DataFrame())
     recent_sportsbook_summary = profile.get("recent_sportsbook_summary", pd.DataFrame())
     if not recent_market_summary.empty and "market" in scored.columns:
