@@ -2,6 +2,8 @@ import pandas as pd
 import streamlit as st
 import json
 import base64
+import io
+import zipfile
 from pathlib import Path
 
 from builders.parlays import ParlaySettings, build_parlay
@@ -555,6 +557,39 @@ PLAN_FEATURE_MAP = {
     ],
 }
 
+OWNER_DOCS = [
+    {
+        "label": "Setup Guide",
+        "path": Path("docs/SETUP.md"),
+        "purpose": "Local install, ports, and first-run checks.",
+    },
+    {
+        "label": "Config Map",
+        "path": Path("docs/CONFIG.md"),
+        "purpose": "Environment variables, secrets, and packaging controls.",
+    },
+    {
+        "label": "Deployment Notes",
+        "path": Path("docs/DEPLOYMENT.md"),
+        "purpose": "Hosted deploy flow, reboot/recovery steps, and production posture.",
+    },
+    {
+        "label": "Feature Map",
+        "path": Path("docs/FEATURE_MAP.md"),
+        "purpose": "Core workflow, intelligence layers, and packaging boundaries.",
+    },
+    {
+        "label": "Buyer / Operator Handoff",
+        "path": Path("docs/BUYER_HANDOFF.md"),
+        "purpose": "Transfer summary, risks, operator checklist, and buyer framing.",
+    },
+    {
+        "label": "Product README",
+        "path": Path("README.md"),
+        "purpose": "Top-level product overview and doc entrypoint.",
+    },
+]
+
 
 def build_plan_summary(plan_name: str) -> dict[str, object]:
     plan_name = str(plan_name or "Core")
@@ -575,6 +610,31 @@ def build_plan_summary(plan_name: str) -> dict[str, object]:
         "body": "Built for a cleaner first-run experience. This keeps the app focused on scan, build, track, and learn without surfacing every advanced diagnostic at once.",
         "features": PLAN_FEATURE_MAP["Core"],
     }
+
+
+def build_owner_doc_rows() -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for doc in OWNER_DOCS:
+        doc_path = Path(doc["path"])
+        rows.append(
+            {
+                "Document": str(doc["label"]),
+                "Purpose": str(doc["purpose"]),
+                "Path": str(doc_path),
+                "Status": "Ready" if doc_path.exists() else "Missing",
+            }
+        )
+    return rows
+
+
+def build_owner_handoff_zip_bytes() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for doc in OWNER_DOCS:
+            doc_path = Path(doc["path"])
+            if doc_path.exists():
+                archive.writestr(str(doc_path).replace("\\", "/"), doc_path.read_bytes())
+    return buffer.getvalue()
 
 
 def build_sync_freshness_summary(last_sync, sync_enabled: bool) -> dict[str, str]:
@@ -3297,6 +3357,29 @@ with st.expander("View Preferences", expanded=False):
             st.markdown(f"**{plan_name}**")
             for feature in features:
                 st.caption(f"- {feature}")
+
+    with st.expander("Owner Notes", expanded=selected_plan_mode == "Owner"):
+        st.caption("A lightweight operator package lives in the repo now, so a future buyer or collaborator can inherit the app with less guesswork.")
+        owner_note_col1, owner_note_col2 = st.columns([1.25, 1])
+        owner_note_col1.markdown("**Operator checklist**")
+        owner_note_col1.caption("1. Review setup and config docs before changing provider keys or deployment secrets.")
+        owner_note_col1.caption("2. Demo in `Simple` view, then switch to `Pro` for diagnostics and tuning.")
+        owner_note_col1.caption("3. Smoke-test `Overview`, `Edge Scanner`, `Parlay Lab`, and `Results & Grading` after major changes.")
+        owner_note_col1.caption("4. Keep provider credentials out of Git and store hosted keys in Streamlit secrets.")
+        owner_note_col2.info("Best buyer-facing posture: `Core` or `Pro` plan with `Simple` view as the default. Use `Owner` when operating, packaging, or handing off the product.")
+        owner_docs_df = pd.DataFrame(build_owner_doc_rows())
+        st.dataframe(owner_docs_df, use_container_width=True, hide_index=True)
+        handoff_zip_bytes = build_owner_handoff_zip_bytes()
+        download_col1, download_col2 = st.columns([1, 1])
+        download_col1.download_button(
+            "Download Handoff Docs",
+            data=handoff_zip_bytes,
+            file_name="ai_parlay_builder_handoff_docs.zip",
+            mime="application/zip",
+            use_container_width=True,
+            key="download_owner_handoff_docs",
+        )
+        download_col2.caption("Bundle includes the refreshed README plus the setup, config, deployment, feature-map, and buyer-handoff guides.")
 
     st.markdown("#### Stored View Settings")
     view_pref_col1, view_pref_col2 = st.columns(2)
