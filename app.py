@@ -532,6 +532,51 @@ def format_elapsed_minutes(minutes: int) -> str:
     return f"{rounded_days:g} day{'s' if rounded_days != 1 else ''}"
 
 
+PLAN_FEATURE_MAP = {
+    "Core": [
+        "Overview operating guidance",
+        "Live Board and Edge Scanner",
+        "Parlay Lab ticket building",
+        "Saved tickets and grading workflows",
+        "Bankroll journal",
+    ],
+    "Pro": [
+        "Smart score and parlay leg audits",
+        "Smart pick learning tables",
+        "Source performance and experiment logs",
+        "Weekly and monthly review diagnostics",
+        "Backtest and CLV diagnostics",
+    ],
+    "Owner": [
+        "Plan packaging controls",
+        "Default-view and feature-surface controls",
+        "Sync policy and local operating controls",
+        "Buyer-handoff friendly admin summary",
+    ],
+}
+
+
+def build_plan_summary(plan_name: str) -> dict[str, object]:
+    plan_name = str(plan_name or "Core")
+    if plan_name == "Pro":
+        return {
+            "title": "Pro analyst workflow",
+            "body": "Built for sharper review, deeper diagnostics, and smarter auditability. This is the best fit when the user wants model tuning and history-aware decision support.",
+            "features": PLAN_FEATURE_MAP["Core"] + PLAN_FEATURE_MAP["Pro"],
+        }
+    if plan_name == "Owner":
+        return {
+            "title": "Owner / operator workflow",
+            "body": "Built for operating, packaging, and handing off the product cleanly. This view is strongest when you need admin clarity, feature mapping, and buyer-readiness.",
+            "features": PLAN_FEATURE_MAP["Core"] + PLAN_FEATURE_MAP["Pro"] + PLAN_FEATURE_MAP["Owner"],
+        }
+    return {
+        "title": "Core buyer-friendly workflow",
+        "body": "Built for a cleaner first-run experience. This keeps the app focused on scan, build, track, and learn without surfacing every advanced diagnostic at once.",
+        "features": PLAN_FEATURE_MAP["Core"],
+    }
+
+
 def build_sync_freshness_summary(last_sync, sync_enabled: bool) -> dict[str, str]:
     if not sync_enabled:
         return {
@@ -2961,6 +3006,8 @@ sync_bool_view_preference_state("__app__", "smart_weights_override_enabled", "sm
 sync_bool_view_preference_state("__app__", "top_priority_strip_collapsed", "top_priority_strip_collapsed", False)
 app_detail_mode_session_key = "app_detail_mode"
 sync_view_preference_state("__app__", app_detail_mode_session_key, "detail_mode", "Simple")
+app_plan_session_key = "app_plan_mode"
+sync_view_preference_state("__app__", app_plan_session_key, "plan_mode", "Core")
 sync_typed_view_preference_state("__app__", "smart_model_weight", "smart_model_weight", 0.42, float)
 sync_typed_view_preference_state("__app__", "smart_confidence_weight", "smart_confidence_weight", 0.28, float)
 sync_typed_view_preference_state("__app__", "smart_edge_multiplier", "smart_edge_multiplier", 1.45, float)
@@ -3014,6 +3061,7 @@ with selector_col4:
         args=("__app__", app_detail_mode_session_key, "detail_mode"),
     )
 persist_preference_if_changed("__app__", "detail_mode", app_detail_mode, "Simple")
+plan_summary = build_plan_summary(st.session_state.get(app_plan_session_key, "Core"))
 is_pro_mode = app_detail_mode == "Pro"
 is_simple_mode = not is_pro_mode
 
@@ -3218,6 +3266,39 @@ with st.expander("Watchlist", expanded=False):
 
 with st.expander("View Preferences", expanded=False):
     st.caption("Remembered per sport after you change them. Reset here if you want to return to the default compact views.")
+    st.markdown("#### Product Packaging")
+    packaging_col1, packaging_col2 = st.columns(2)
+    packaging_col1.write(f"Current Plan: `{get_view_preference('__app__', 'plan_mode', 'Core')}`")
+    packaging_col1.write(f"Current View: `{get_view_preference('__app__', 'detail_mode', 'Simple')}`")
+    packaging_col2.caption(plan_summary["title"])
+    packaging_col2.caption(str(plan_summary["body"]))
+    selected_plan_mode = st.selectbox(
+        "Product plan",
+        ["Core", "Pro", "Owner"],
+        key=app_plan_session_key,
+        on_change=persist_view_preference_from_session,
+        args=("__app__", app_plan_session_key, "plan_mode"),
+    )
+    persist_preference_if_changed("__app__", "plan_mode", selected_plan_mode, "Core")
+    selected_detail_mode = st.selectbox(
+        "Default app view",
+        ["Simple", "Pro"],
+        key="owner_default_detail_mode",
+        index=0 if app_detail_mode == "Simple" else 1,
+    )
+    if st.button("Apply Packaging Defaults", use_container_width=True, key="apply_packaging_defaults"):
+        st.session_state[app_detail_mode_session_key] = selected_detail_mode
+        save_view_preference("__app__", "detail_mode", selected_detail_mode)
+        save_view_preference("__app__", "plan_mode", selected_plan_mode)
+        st.success("Updated the default packaging mode for this app session.")
+        st.rerun()
+    with st.expander("Feature Map", expanded=False):
+        for plan_name, features in PLAN_FEATURE_MAP.items():
+            st.markdown(f"**{plan_name}**")
+            for feature in features:
+                st.caption(f"- {feature}")
+
+    st.markdown("#### Stored View Settings")
     view_pref_col1, view_pref_col2 = st.columns(2)
     view_pref_col1.write(f"Selected Sport: `{get_view_preference('__app__', 'selected_sport_label', sport_labels[0])}`")
     view_pref_col1.write(f"Theme: `{get_view_preference('__app__', 'theme_mode', 'Light')}`")
@@ -3610,6 +3691,8 @@ with tab0:
         """,
         unsafe_allow_html=True,
     )
+    if is_simple_mode:
+        st.caption(f"Packaging posture: `{st.session_state.get(app_plan_session_key, 'Core')}`. {plan_summary['body']}")
     operating_mode_target_map = {
         "Edge Scanner": "edge_scanner",
         "Parlay Lab": "parlay_lab",
