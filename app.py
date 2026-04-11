@@ -637,6 +637,32 @@ def build_owner_handoff_zip_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def build_owner_summary_payload(
+    *,
+    current_plan_mode: str,
+    current_view_mode: str,
+    sport_label: str,
+    board_type: str,
+    docs_df: pd.DataFrame,
+    plan_summary: dict[str, object],
+) -> str:
+    ready_docs = int((docs_df["Status"] == "Ready").sum()) if not docs_df.empty and "Status" in docs_df.columns else 0
+    payload = {
+        "product": "AI Parlay Builder",
+        "generated_at_utc": pd.Timestamp.utcnow().isoformat(),
+        "packaging_mode": current_plan_mode,
+        "default_view": current_view_mode,
+        "current_sport": sport_label,
+        "current_board_type": board_type,
+        "plan_title": str(plan_summary.get("title") or ""),
+        "plan_body": str(plan_summary.get("body") or ""),
+        "owner_docs_ready": ready_docs,
+        "owner_docs_total": int(len(docs_df)),
+        "owner_docs": docs_df.to_dict(orient="records") if not docs_df.empty else [],
+    }
+    return json.dumps(payload, indent=2, default=str)
+
+
 def build_sync_freshness_summary(last_sync, sync_enabled: bool) -> dict[str, str]:
     if not sync_enabled:
         return {
@@ -3781,7 +3807,7 @@ with tab0:
     if is_simple_mode:
         st.caption(f"Packaging posture: `{current_plan_mode}`. {plan_summary['body']}")
     elif is_pro_mode and not is_pro_plan:
-        st.info("`Core` plan keeps advanced diagnostics packaged out, even in `Pro` view. Switch the product plan to `Pro` or `Owner` in `View Preferences` if you want the full analyst surface.")
+        st.info("`Core` plan is intentionally buyer-friendly. It keeps advanced diagnostics packaged out, even in `Pro` view. Switch the product plan to `Pro` or `Owner` in `View Preferences` when you want the full analyst surface.")
     if is_owner_plan:
         owner_docs_df = pd.DataFrame(build_owner_doc_rows())
         ready_owner_docs = int((owner_docs_df["Status"] == "Ready").sum()) if not owner_docs_df.empty else 0
@@ -3790,6 +3816,24 @@ with tab0:
         owner_summary_col2.metric("Packaging Mode", current_plan_mode)
         owner_summary_col3.metric("Default View", app_detail_mode)
         st.caption("Owner mode is meant for operating and handing off the product. Use the in-app handoff bundle in `View Preferences` when you need to package the repo for a collaborator or buyer.")
+        owner_summary_json = build_owner_summary_payload(
+            current_plan_mode=current_plan_mode,
+            current_view_mode=app_detail_mode,
+            sport_label=sport_label,
+            board_type=board_type,
+            docs_df=owner_docs_df,
+            plan_summary=plan_summary,
+        )
+        owner_export_col1, owner_export_col2 = st.columns([1.2, 1.8])
+        owner_export_col1.download_button(
+            "Download Owner Summary",
+            data=owner_summary_json,
+            file_name="ai_parlay_builder_owner_summary.json",
+            mime="application/json",
+            use_container_width=True,
+            key="download_owner_summary_overview",
+        )
+        owner_export_col2.caption("This quick export captures the current packaging posture, active sport/board context, and handoff-doc readiness so a future operator has a lightweight snapshot of the product state.")
     operating_mode_target_map = {
         "Edge Scanner": "edge_scanner",
         "Parlay Lab": "parlay_lab",
@@ -5593,7 +5637,7 @@ with tab5:
         )
     elif is_pro_mode and not is_pro_plan:
         st.markdown("### Learning & Review")
-        st.info("`Core` plan keeps smart learning, source experiments, recommendation cards, and review diagnostics packaged out. Switch the product plan to `Pro` or `Owner` in `View Preferences` to open them.")
+        st.info("`Core` plan is intentionally simpler for buyers and first-run users. It keeps smart learning, source experiments, recommendation cards, and review diagnostics packaged out. Switch the product plan to `Pro` or `Owner` in `View Preferences` to open them.")
     else:
         st.markdown("### Learning & Review")
         st.info("Simple view keeps ticket review, settlement, and bankroll tracking visible here. Switch to `Pro` to open smart learning, source experiments, recommendation cards, and weekly/monthly model review.")
@@ -6299,7 +6343,7 @@ with tab5:
 with tab6:
     render_section_header("Backtest", "Review true-results performance, calibration, CLV proxy signals, and profit trends.")
     if is_pro_mode and not is_pro_plan:
-        st.info("`Core` plan keeps Backtest diagnostics packaged out. Switch the product plan to `Pro` or `Owner` in `View Preferences` when you want true-results diagnostics, calibration tables, and CLV review.")
+        st.info("`Core` plan keeps Backtest calmer on purpose so the product feels easier to demo and inherit. Switch the product plan to `Pro` or `Owner` in `View Preferences` when you want true-results diagnostics, calibration tables, and CLV review.")
     elif is_simple_mode:
         st.info("Simple view keeps Backtest trimmed down so the app feels easier to operate. Switch to `Pro` when you want true-results diagnostics, calibration tables, and CLV review.")
     else:
