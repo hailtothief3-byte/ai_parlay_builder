@@ -3112,18 +3112,22 @@ with selector_col3:
 persist_preference_if_changed("__app__", "theme_mode", theme_mode, "Light")
 with selector_col4:
     st.markdown('<div class="top-select-label">View</div>', unsafe_allow_html=True)
-    app_detail_mode = st.selectbox(
+app_detail_mode = st.selectbox(
         "View",
         ["Simple", "Pro"],
         key=app_detail_mode_session_key,
         label_visibility="collapsed",
         on_change=persist_view_preference_from_session,
         args=("__app__", app_detail_mode_session_key, "detail_mode"),
-    )
+)
 persist_preference_if_changed("__app__", "detail_mode", app_detail_mode, "Simple")
-plan_summary = build_plan_summary(st.session_state.get(app_plan_session_key, "Core"))
+current_plan_mode = str(st.session_state.get(app_plan_session_key, "Core") or "Core")
+plan_summary = build_plan_summary(current_plan_mode)
 is_pro_mode = app_detail_mode == "Pro"
 is_simple_mode = not is_pro_mode
+is_owner_plan = current_plan_mode == "Owner"
+is_pro_plan = current_plan_mode in {"Pro", "Owner"}
+can_show_advanced_diagnostics = is_pro_mode and is_pro_plan
 
 sport_config = get_sport_config(sport_label)
 live_sport_keys = resolve_live_keys_for_label(sport_label)
@@ -3775,7 +3779,17 @@ with tab0:
         unsafe_allow_html=True,
     )
     if is_simple_mode:
-        st.caption(f"Packaging posture: `{st.session_state.get(app_plan_session_key, 'Core')}`. {plan_summary['body']}")
+        st.caption(f"Packaging posture: `{current_plan_mode}`. {plan_summary['body']}")
+    elif is_pro_mode and not is_pro_plan:
+        st.info("`Core` plan keeps advanced diagnostics packaged out, even in `Pro` view. Switch the product plan to `Pro` or `Owner` in `View Preferences` if you want the full analyst surface.")
+    if is_owner_plan:
+        owner_docs_df = pd.DataFrame(build_owner_doc_rows())
+        ready_owner_docs = int((owner_docs_df["Status"] == "Ready").sum()) if not owner_docs_df.empty else 0
+        owner_summary_col1, owner_summary_col2, owner_summary_col3 = st.columns(3)
+        owner_summary_col1.metric("Owner Docs Ready", f"{ready_owner_docs}/{len(owner_docs_df)}")
+        owner_summary_col2.metric("Packaging Mode", current_plan_mode)
+        owner_summary_col3.metric("Default View", app_detail_mode)
+        st.caption("Owner mode is meant for operating and handing off the product. Use the in-app handoff bundle in `View Preferences` when you need to package the repo for a collaborator or buyer.")
     operating_mode_target_map = {
         "Edge Scanner": "edge_scanner",
         "Parlay Lab": "parlay_lab",
@@ -3868,14 +3882,14 @@ with tab0:
                 st.info("Choose a reminder to restore first.")
         for idx, notice in enumerate(visible_notifications):
             render_notification_notice(notice, key_suffix=str(idx), sport_label=sport_label)
-    if hidden_notification_history and is_pro_mode:
+    if hidden_notification_history and can_show_advanced_diagnostics:
         with st.expander("Notification History", expanded=False):
             history_df = pd.DataFrame(hidden_notification_history)
             if "timestamp" in history_df.columns:
                 history_df["when"] = history_df["timestamp"].map(lambda value: format_relative_timestamp(value))
             st.dataframe(history_df, use_container_width=True, hide_index=True)
 
-    if is_pro_mode:
+    if can_show_advanced_diagnostics:
         st.markdown("### Workflow Readiness")
         workflow_left, workflow_right = st.columns(2)
         with workflow_left:
@@ -4261,7 +4275,7 @@ with tab2:
         for card in cards:
             render_prop_card(card)
 
-        if is_pro_mode:
+        if can_show_advanced_diagnostics:
             st.markdown("### Smart Score Audit")
             audit_candidates = display_edges.sort_values(["smart_score", "smart_expected_win_rate", "edge"], ascending=False).head(20).copy()
             if audit_candidates.empty:
@@ -4393,7 +4407,7 @@ with tab3:
         ("smart_profiles", "Jump to Smart Profiles"),
         ("builder", "Jump to Builder"),
     ]
-    if is_pro_mode:
+    if can_show_advanced_diagnostics:
         parlay_jump_labels.append(("audit", "Jump to Leg Audit"))
     if is_dfs:
         parlay_jump_labels.append(("dfs_autoslip", "Jump to DFS Auto-Slip"))
@@ -4616,7 +4630,7 @@ with tab3:
                     ]))),
                     use_container_width=True,
                 )
-                if is_pro_mode:
+                if can_show_advanced_diagnostics:
                     st.markdown("#### Parlay Leg Audit")
                     if parlay_focus_target == "audit":
                         st.info("Parlay Lab jump is focused on the live parlay leg audit below.")
@@ -5180,7 +5194,7 @@ with tab5:
     source_summary_df = build_true_source_summary(graded_df)
     override_recommendation_title, override_recommendation_body = build_override_recommendation(source_summary_df)
 
-    if is_pro_mode:
+    if can_show_advanced_diagnostics:
         st.markdown("### Smart Pick Learning")
         auto_weight_profile = build_smart_weight_profile(graded_df)
         resolved_weight_profile = apply_smart_weight_overrides(auto_weight_profile, manual_smart_weight_overrides)
@@ -5577,6 +5591,9 @@ with tab5:
             mime="application/json",
             use_container_width=True,
         )
+    elif is_pro_mode and not is_pro_plan:
+        st.markdown("### Learning & Review")
+        st.info("`Core` plan keeps smart learning, source experiments, recommendation cards, and review diagnostics packaged out. Switch the product plan to `Pro` or `Owner` in `View Preferences` to open them.")
     else:
         st.markdown("### Learning & Review")
         st.info("Simple view keeps ticket review, settlement, and bankroll tracking visible here. Switch to `Pro` to open smart learning, source experiments, recommendation cards, and weekly/monthly model review.")
@@ -6281,7 +6298,9 @@ with tab5:
 
 with tab6:
     render_section_header("Backtest", "Review true-results performance, calibration, CLV proxy signals, and profit trends.")
-    if is_simple_mode:
+    if is_pro_mode and not is_pro_plan:
+        st.info("`Core` plan keeps Backtest diagnostics packaged out. Switch the product plan to `Pro` or `Owner` in `View Preferences` when you want true-results diagnostics, calibration tables, and CLV review.")
+    elif is_simple_mode:
         st.info("Simple view keeps Backtest trimmed down so the app feels easier to operate. Switch to `Pro` when you want true-results diagnostics, calibration tables, and CLV review.")
     else:
         backtest_focus_target = st.session_state.get("backtest_section_focus_target", "")
