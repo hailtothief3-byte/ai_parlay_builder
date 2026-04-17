@@ -73,7 +73,7 @@ SPORTSGAMEODDS_MARKET_KEY_MAP = {
 }
 
 
-def track_edge_rows(edge_df: pd.DataFrame, sport_key: str, source: str = "manual_track") -> int:
+def track_edge_rows(edge_df: pd.DataFrame, sport_key: str | None, source: str = "manual_track") -> int:
     if edge_df.empty:
         return 0
 
@@ -82,9 +82,12 @@ def track_edge_rows(edge_df: pd.DataFrame, sport_key: str, source: str = "manual
 
     with SessionLocal() as db:
         for _, row in edge_df.iterrows():
+            row_sport_key = str(row.get("sport_key") or sport_key or "").strip()
+            if not row_sport_key:
+                continue
             db.add(
                 TrackedPick(
-                    sport_key=sport_key,
+                    sport_key=row_sport_key,
                     external_event_id=str(row["event_id"]),
                     bookmaker_key=str(row["book_key"]),
                     bookmaker_title=str(row["sportsbook"]),

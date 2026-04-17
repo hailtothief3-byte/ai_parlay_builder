@@ -127,14 +127,19 @@ def save_ticket(
         db.add(ticket)
         db.flush()
 
-        sport_key = get_sport_config(sport_label)["live_keys"][0] if source == "live_edges" else None
+        fallback_sport_key = get_sport_config(sport_label)["live_keys"][0] if source == "live_edges" else None
 
         for _, row in legs_df.iterrows():
+            row_sport_key = row.get("sport_key")
+            if source == "live_edges":
+                resolved_sport_key = str(row_sport_key or fallback_sport_key or "").strip() or None
+            else:
+                resolved_sport_key = str(row_sport_key).strip() if pd.notnull(row_sport_key) else None
             db.add(
                 SavedTicketLeg(
                     ticket_id=ticket.id,
                     leg_rank=int(row.get("leg_rank", 0) or 0),
-                    sport_key=sport_key if source == "live_edges" else row.get("sport_key"),
+                    sport_key=resolved_sport_key,
                     external_event_id=str(row.get("event_id")) if pd.notnull(row.get("event_id")) else None,
                     bookmaker_key=str(row.get("book_key")) if pd.notnull(row.get("book_key")) else None,
                     bookmaker_title=str(row.get("sportsbook")) if pd.notnull(row.get("sportsbook")) else None,

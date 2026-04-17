@@ -313,6 +313,30 @@ def _build_reason_text(row: pd.Series) -> str:
     return " | ".join(parts[:4])
 
 
+def _history_support_label(history_picks: int) -> str:
+    history_picks = int(history_picks or 0)
+    if history_picks <= 0:
+        return "Model-led"
+    if history_picks < 12:
+        return "Light history"
+    if history_picks < 35:
+        return "Building history"
+    return "History-informed"
+
+
+def _build_buyer_trust_text(row: pd.Series) -> str:
+    history_picks_used = int(pd.to_numeric(row.get("history_picks_used", 0), errors="coerce") or 0)
+    history_support = _history_support_label(history_picks_used)
+    expected_win = float(pd.to_numeric(row.get("smart_expected_win_rate", 0.0), errors="coerce") or 0.0) * 100.0
+    model_win = float(pd.to_numeric(row.get("model_prob", 0.0), errors="coerce") or 0.0) * 100.0
+    history_lift = float(pd.to_numeric(row.get("smart_history_lift", 0.0), errors="coerce") or 0.0)
+    lift_label = "adding support" if history_lift >= 0 else "adding caution"
+    return (
+        f"{history_support}. Expected win {expected_win:.1f}% versus model {model_win:.1f}%, "
+        f"with history memory {lift_label} ({history_lift:+.1f} score pts) across {history_picks_used} matched history signals."
+    )
+
+
 def _build_audit_label(row: pd.Series) -> str:
     player = str(row.get("player") or "Unknown").strip()
     market = str(row.get("market") or "").strip().replace("_", " ").title()
@@ -551,6 +575,7 @@ def score_smart_picks(
         + (scored["sportsbook_blended_hit_rate"] * float(weight_profile["expected_sportsbook_weight"]))
     ).clip(lower=0.01, upper=0.99)
 
+    scored["smart_history_lift"] = history_lift.round(2)
     scored["smart_score"] = (base_score + history_lift).map(lambda value: round(_clip(float(value), 1.0, 99.0), 1))
     scored["smart_history_hit_rate"] = (
         (scored["market_blended_hit_rate"] * 0.45)
@@ -576,10 +601,19 @@ def score_smart_picks(
         + pd.to_numeric(scored.get("recent_market_picks", 0), errors="coerce").fillna(0)
         + pd.to_numeric(scored.get("recent_sportsbook_picks", 0), errors="coerce").fillna(0)
     ).astype(int)
+    scored["smart_history_support"] = scored["history_picks_used"].map(_history_support_label)
+    scored["smart_buyer_trust"] = scored.apply(_build_buyer_trust_text, axis=1)
     scored["smart_profile_mode"] = str(weight_profile["profile_mode"])
     scored["smart_audit_label"] = scored.apply(_build_audit_label, axis=1)
+
+    summary_payload = {
+        **summary,
+        "profile_mode": str(weight_profile.get("profile_mode") or "default"),
+        "profile_reason": str(weight_profile.get("profile_reason") or ""),
+        "calibration_gap": float(weight_profile.get("calibration_gap", 0.0) or 0.0),
+    }
 
     return scored.sort_values(
         ["smart_score", "smart_expected_win_rate", "edge", "confidence"],
         ascending=[False, False, False, False],
-    ), summary
+    ), summary_payload

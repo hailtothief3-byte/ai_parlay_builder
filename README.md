@@ -28,7 +28,15 @@ The app now supports packaging layers for different audiences:
 - Config map: [docs/CONFIG.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/CONFIG.md)
 - Deployment notes: [docs/DEPLOYMENT.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/DEPLOYMENT.md)
 - Feature map: [docs/FEATURE_MAP.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/FEATURE_MAP.md)
+- Buyer demo walkthrough: [docs/DEMO_WALKTHROUGH.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/DEMO_WALKTHROUGH.md)
 - Buyer/operator handoff: [docs/BUYER_HANDOFF.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/BUYER_HANDOFF.md)
+- Buyer one-sheet: [business_kit/BUYER_ONE_SHEET.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/BUYER_ONE_SHEET.md)
+- Plan matrix: [business_kit/PLAN_MATRIX.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/PLAN_MATRIX.md)
+- Local buyer demo checklist: [business_kit/LOCAL_BUYER_DEMO_CHECKLIST.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/LOCAL_BUYER_DEMO_CHECKLIST.md)
+- Sale package: [business_kit/SALE_PACKAGE.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/SALE_PACKAGE.md)
+- Recorded demo script: [business_kit/RECORDED_DEMO_SCRIPT.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/RECORDED_DEMO_SCRIPT.md)
+- Screenshot checklist: [business_kit/SCREENSHOT_CHECKLIST.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/SCREENSHOT_CHECKLIST.md)
+- Listing description: [business_kit/LISTING_DESCRIPTION.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/LISTING_DESCRIPTION.md)
 
 ## Local run
 

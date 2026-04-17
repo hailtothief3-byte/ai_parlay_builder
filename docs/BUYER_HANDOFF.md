@@ -49,6 +49,17 @@ That improves operator trust and lowers handoff risk.
 
 ## What a buyer should know
 
+Before a live demo or transfer review, use:
+
+- [docs/DEMO_WALKTHROUGH.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/DEMO_WALKTHROUGH.md)
+- [business_kit/BUYER_ONE_SHEET.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/BUYER_ONE_SHEET.md)
+- [business_kit/PLAN_MATRIX.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/PLAN_MATRIX.md)
+- [business_kit/LOCAL_BUYER_DEMO_CHECKLIST.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/LOCAL_BUYER_DEMO_CHECKLIST.md)
+- [business_kit/SALE_PACKAGE.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/SALE_PACKAGE.md)
+- [business_kit/RECORDED_DEMO_SCRIPT.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/RECORDED_DEMO_SCRIPT.md)
+- [business_kit/SCREENSHOT_CHECKLIST.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/SCREENSHOT_CHECKLIST.md)
+- [business_kit/LISTING_DESCRIPTION.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/business_kit/LISTING_DESCRIPTION.md)
+
 ### Operational strengths
 
 - live/demo dual workflow
@@ -86,8 +97,9 @@ If the goal is to make this easier to sell later, the highest-value next steps a
 1. verify local setup with [docs/SETUP.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/SETUP.md)
 2. review environment variables in [docs/CONFIG.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/CONFIG.md)
 3. confirm production deploy path in [docs/DEPLOYMENT.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/DEPLOYMENT.md)
-4. review platform structure in [docs/FEATURE_MAP.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/FEATURE_MAP.md)
-5. run a smoke test on:
+4. review the buyer demo flow in [docs/DEMO_WALKTHROUGH.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/DEMO_WALKTHROUGH.md)
+5. review platform structure in [docs/FEATURE_MAP.md](C:/Users/Aharp/OneDrive/Desktop/ai_parlay_builder_starter/ai_parlay_builder/docs/FEATURE_MAP.md)
+6. run a smoke test on:
    - Overview
    - Edge Scanner
    - Parlay Lab

@@ -10,7 +10,16 @@ from builders.parlays import ParlaySettings, build_parlay
 from config import CONFIG
 from db import init_db
 from ingestion.providers import get_provider
-from sports_config import get_market_coverage, get_market_coverage_map, get_sport_config, get_sport_labels, get_sport_provider_name, is_live_sync_enabled, resolve_live_keys_for_label
+from sports_config import (
+    find_sport_label_for_key,
+    get_market_coverage,
+    get_market_coverage_map,
+    get_sport_config,
+    get_sport_labels,
+    get_sport_provider_name,
+    is_live_sync_enabled,
+    resolve_live_keys_for_label,
+)
 from services.demo_seed import clear_demo_live_data, seed_all_demo_live_data, seed_demo_live_data
 from services.dfs_slip_service import (
     build_dfs_slip_payload,
@@ -191,6 +200,7 @@ def _build_brandmark_data_uri() -> str:
 
 
 BRANDMARK_DATA_URI = _build_brandmark_data_uri()
+PHASE1_MULTI_SPORT_LABELS = ["NBA", "MLB", "NFL"]
 
 
 def load_nba_exotic_debug() -> dict:
@@ -228,6 +238,81 @@ def apply_market_coverage(df: pd.DataFrame, coverage_map: dict[str, dict[str, st
         )["note"]
     )
     return enriched
+
+
+def get_phase1_multi_sport_labels() -> list[str]:
+    labels: list[str] = []
+    for label in PHASE1_MULTI_SPORT_LABELS:
+        if label in get_sport_labels() and is_live_sync_enabled(label):
+            labels.append(label)
+    return labels
+
+
+def get_phase1_multi_sport_keys() -> list[str]:
+    keys: list[str] = []
+    for label in get_phase1_multi_sport_labels():
+        keys.extend(resolve_live_keys_for_label(label))
+    return list(dict.fromkeys(keys))
+
+
+def get_phase1_multi_sport_coverage_map() -> dict[str, dict[str, str]]:
+    merged: dict[str, dict[str, str]] = {}
+    for label in get_phase1_multi_sport_labels():
+        coverage_map = get_market_coverage_map(label)
+        for market, info in coverage_map.items():
+            current = merged.get(market)
+            if current is None:
+                merged[market] = dict(info)
+                continue
+            if current.get("status") != "Live" and info.get("status") == "Live":
+                merged[market] = dict(info)
+    return merged
+
+
+def annotate_display_sport(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    annotated = df.copy()
+    if "sport" in annotated.columns:
+        return annotated
+    if "sport_key" not in annotated.columns:
+        return annotated
+    annotated["sport"] = annotated["sport_key"].map(
+        lambda value: find_sport_label_for_key(str(value or "").strip())
+        or str(value or "").strip().replace("_", " ").upper()
+    )
+    return annotated
+
+
+def select_live_parlay_candidates(
+    candidates: pd.DataFrame,
+    legs: int,
+    allow_same_player: bool,
+    balanced_sport_mix: bool = False,
+) -> pd.DataFrame:
+    if candidates.empty or legs <= 0:
+        return candidates.head(0).copy()
+
+    working = candidates.copy()
+    if not allow_same_player and "player" in working.columns:
+        working = working.drop_duplicates(subset=["player"], keep="first")
+
+    if not balanced_sport_mix or "sport" not in working.columns:
+        return working.head(legs).copy()
+
+    selected_indices: list[int] = []
+    for _, group in working.groupby("sport", sort=False):
+        if group.empty:
+            continue
+        selected_indices.append(int(group.index[0]))
+        if len(selected_indices) >= legs:
+            break
+
+    if len(selected_indices) < legs:
+        remaining = working.drop(index=selected_indices, errors="ignore")
+        selected_indices.extend([int(idx) for idx in remaining.head(legs - len(selected_indices)).index.tolist()])
+
+    return working.loc[selected_indices].copy()
 
 
 def render_coverage_badge(status: str) -> str:
@@ -559,6 +644,46 @@ PLAN_FEATURE_MAP = {
 
 OWNER_DOCS = [
     {
+        "label": "Buyer One-Sheet",
+        "path": Path("business_kit/BUYER_ONE_SHEET.md"),
+        "purpose": "Short asset summary for buyer conversations, pitch framing, and quick evaluation.",
+    },
+    {
+        "label": "Recorded Demo Script",
+        "path": Path("business_kit/RECORDED_DEMO_SCRIPT.md"),
+        "purpose": "Short 3 to 4 minute recording script for a calm, low-conversation product demo.",
+    },
+    {
+        "label": "Screenshot Checklist",
+        "path": Path("business_kit/SCREENSHOT_CHECKLIST.md"),
+        "purpose": "Capture order and content guide for a cleaner, buyer-friendly screenshot set.",
+    },
+    {
+        "label": "Listing Description",
+        "path": Path("business_kit/LISTING_DESCRIPTION.md"),
+        "purpose": "Reusable short, marketplace-style, and outreach-ready asset descriptions.",
+    },
+    {
+        "label": "Sale Package",
+        "path": Path("business_kit/SALE_PACKAGE.md"),
+        "purpose": "Low-conversation sale packet describing the asset, transfer flow, and buyer review process.",
+    },
+    {
+        "label": "Local Buyer Demo Checklist",
+        "path": Path("business_kit/LOCAL_BUYER_DEMO_CHECKLIST.md"),
+        "purpose": "Pre-demo local checklist for resetting posture, checking the key tabs, and avoiding fragile walkthroughs.",
+    },
+    {
+        "label": "Plan Matrix",
+        "path": Path("business_kit/PLAN_MATRIX.md"),
+        "purpose": "Core / Pro / Owner packaging comparison for pricing, positioning, and handoff conversations.",
+    },
+    {
+        "label": "Demo Walkthrough",
+        "path": Path("docs/DEMO_WALKTHROUGH.md"),
+        "purpose": "Short buyer-facing demo flow, talking points, and stable walkthrough posture.",
+    },
+    {
         "label": "Setup Guide",
         "path": Path("docs/SETUP.md"),
         "purpose": "Local install, ports, and first-run checks.",
@@ -663,6 +788,56 @@ def build_owner_summary_payload(
     return json.dumps(payload, indent=2, default=str)
 
 
+def render_workflow_snapshot_card(*, eyebrow: str, title: str, body: str, metric_label: str, metric_value: str, theme: dict[str, str]) -> None:
+    st.markdown(
+        f"""
+        <div style="
+            background: {theme['card_bg']};
+            border: 1px solid {theme['card_border']};
+            border-radius: 20px;
+            padding: 1rem 1.05rem;
+            min-height: 184px;
+            box-shadow: 0 10px 24px rgba(8, 15, 28, 0.07);
+        ">
+            <div style="
+                color: {theme['eyebrow']};
+                font-size: 0.75rem;
+                font-weight: 800;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                margin-bottom: 0.55rem;
+            ">{eyebrow}</div>
+            <div style="
+                color: {theme['heading_text']};
+                font-size: 1.12rem;
+                font-weight: 800;
+                line-height: 1.25;
+                margin-bottom: 0.45rem;
+            ">{title}</div>
+            <div style="
+                color: {theme['body_text']};
+                line-height: 1.5;
+                font-size: 0.95rem;
+                margin-bottom: 0.85rem;
+            ">{body}</div>
+            <div style="
+                display: inline-flex;
+                gap: 0.35rem;
+                align-items: baseline;
+                padding: 0.28rem 0.65rem;
+                border-radius: 999px;
+                border: 1px solid {theme['card_border']};
+                background: rgba(255,255,255,0.02);
+            ">
+                <span style="color:{theme['section_subtitle']};font-size:0.76rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">{metric_label}</span>
+                <span style="color:{theme['heading_text']};font-size:0.9rem;font-weight:800;">{metric_value}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def build_sync_freshness_summary(last_sync, sync_enabled: bool) -> dict[str, str]:
     if not sync_enabled:
         return {
@@ -764,6 +939,84 @@ def build_smart_mode_status_summary(
     }
 
 
+def build_overview_intelligence_proof(
+    *,
+    source_summary_df: pd.DataFrame,
+    weekly_review: dict[str, object],
+    monthly_review: dict[str, object],
+    smart_weight_profile: dict[str, object],
+    smart_summary: dict[str, object],
+    manual_override_enabled: bool,
+) -> list[dict[str, str]]:
+    cards: list[dict[str, str]] = []
+    profile_mode = str(smart_weight_profile.get("profile_mode") or "default").replace("_", " ").title()
+    history_picks = int(smart_weight_profile.get("history_picks", smart_summary.get("history_picks", 0)) or 0)
+    calibration_gap = float(smart_weight_profile.get("calibration_gap", 0.0) or 0.0)
+    smart_status = build_smart_mode_status_summary(source_summary_df, smart_weight_profile, manual_override_enabled)
+    cards.append(
+        {
+            "eyebrow": "Smart mode",
+            "title": smart_status["title"],
+            "body": smart_status["body"],
+            "metric_label": "History picks",
+            "metric_value": str(history_picks),
+        }
+    )
+
+    weekly_current = dict(weekly_review.get("current_summary") or {})
+    weekly_prior = dict(weekly_review.get("prior_summary") or {})
+    monthly_current = dict(monthly_review.get("current_summary") or {})
+    weekly_hit_delta = float(weekly_current.get("hit_rate", 0.0) or 0.0) - float(weekly_prior.get("hit_rate", 0.0) or 0.0)
+    monthly_units = float(monthly_current.get("profit_units", 0.0) or 0.0)
+    review_title = "Recent review is steady"
+    review_body = "Weekly and monthly review are not forcing a sharp posture change, so the current workflow can stay balanced."
+    if weekly_hit_delta >= 0.04:
+        review_title = "Recent review is improving"
+        review_body = f"Weekly hit rate is up {weekly_hit_delta * 100:.1f} points versus the prior window, which supports a firmer operating posture."
+    elif weekly_hit_delta <= -0.04:
+        review_title = "Recent review is cooling"
+        review_body = f"Weekly hit rate is down {weekly_hit_delta * 100:.1f} points versus the prior window, so the app is correctly leaning more selective."
+    elif monthly_units >= 1.0:
+        review_title = "Monthly review is supportive"
+        review_body = f"Current monthly profit is {monthly_units:+.2f} units, which gives the model a healthier recent backdrop."
+    elif monthly_units <= -1.0:
+        review_title = "Monthly review is under pressure"
+        review_body = f"Current monthly profit is {monthly_units:+.2f} units, so recent review is adding caution instead of volume."
+    cards.append(
+        {
+            "eyebrow": "Review signal",
+            "title": review_title,
+            "body": review_body,
+            "metric_label": "Weekly hit delta",
+            "metric_value": f"{weekly_hit_delta * 100:+.1f} pts",
+        }
+    )
+
+    source_title = "Learning profile is light"
+    source_body = f"The smart engine is currently using a {profile_mode} profile. Calibration gap versus historical hit rate is {calibration_gap * 100:+.1f} points."
+    source_metric_label = "Profile"
+    source_metric_value = profile_mode
+    if isinstance(source_summary_df, pd.DataFrame) and not source_summary_df.empty and "source" in source_summary_df.columns:
+        top_source = source_summary_df.head(1).iloc[0]
+        source_label = format_source_label(str(top_source.get("source") or "smart_pick_engine_auto"))
+        source_roi = float(top_source.get("roi_per_pick", 0.0) or 0.0)
+        source_picks = int(top_source.get("picks", 0) or 0)
+        source_title = f"{source_label} is the current leader"
+        source_body = f"The strongest graded workflow right now is {source_label}, running at {source_roi:+.2f} units per pick across {source_picks} tracked picks."
+        source_metric_label = "Top source ROI"
+        source_metric_value = f"{source_roi:+.2f}u"
+    cards.append(
+        {
+            "eyebrow": "Proof",
+            "title": source_title,
+            "body": source_body,
+            "metric_label": source_metric_label,
+            "metric_value": source_metric_value,
+        }
+    )
+    return cards
+
+
 def build_posture_change_note(weekly_review: dict[str, object], monthly_review: dict[str, object]) -> str:
     weekly_current = dict(weekly_review.get("current_summary") or {})
     weekly_prior = dict(weekly_review.get("prior_summary") or {})
@@ -834,6 +1087,11 @@ def render_top_priority_strip(
     risk_tone = {"Aggressive": "good", "Balanced": "info", "Conservative": "warn"}.get(risk_posture.get("title", ""), "neutral")
     smart_tone = "warn" if manual_override_enabled or smart_mode.get("title") == "Manual test close" else "good"
     posture_label = "DFS posture" if is_dfs else f"{sport_label} posture".strip()
+    operating_summary = str(operating_mode.get("body") or "")
+    operating_summary = operating_summary.split(". ")[0].strip()
+    if operating_summary and not operating_summary.endswith("."):
+        operating_summary += "."
+
     cards_markup: list[str] = []
     for card in top_cards:
         cards_markup.append(
@@ -852,25 +1110,25 @@ def render_top_priority_strip(
         + "".join(source_badges)
     )
     cards_section = f'<div class="priority-strip__cards">{"".join(cards_markup)}</div>' if not collapsed else ""
-    detail_section = (
-        f'<div class="priority-strip__body" style="margin-top:0.75rem;">{freshness.get("body", "")}</div>'
-        f'<div class="priority-strip__body" style="margin-top:0.45rem;">{risk_posture.get("body", "")}</div>'
-        f'<div class="priority-strip__body" style="margin-top:0.45rem;">{smart_mode.get("body", "")}</div>'
+    detail_summary = (
+        f'<div class="priority-strip__detail-list">'
+        f'<div><strong>Board:</strong> {pulse.get("body", "")}</div>'
+        f'<div><strong>Freshness:</strong> {freshness.get("body", "")}</div>'
+        f'{f"<div><strong>Trend:</strong> {posture_change_note}</div>" if posture_change_note else ""}'
+        f'</div>'
     )
-    if posture_change_note and not collapsed:
-        detail_section += f'<div class="priority-strip__body" style="margin-top:0.55rem;font-style:italic;">{posture_change_note}</div>'
     priority_markup = (
         f'<div class="priority-strip">'
         f'<div class="priority-strip__mode">'
         f'<div class="priority-strip__eyebrow">{posture_label}</div>'
         f'<div class="priority-strip__mode-title">{operating_mode.get("title", "")}</div>'
-        f'<div class="priority-strip__body">{operating_mode.get("body", "")}</div>'
+        f'<div class="priority-strip__body">{operating_summary}</div>'
         f'<div class="priority-strip__pulse">'
         f'<strong>{pulse.get("title", "")}</strong>'
-        f'<span>{pulse.get("body", "")}</span>'
+        f'<span>Default workflow: {operating_mode.get("default_workflow", "")}</span>'
         f'</div>'
         f'<div class="priority-strip__badges">{badges_markup}</div>'
-        f'{detail_section}'
+        f'{"" if collapsed else detail_summary}'
         f'</div>'
         f'{cards_section}'
         f'</div>'
@@ -1709,6 +1967,42 @@ def prettify_market_label(value) -> str:
     return raw.replace("_", " ").title()
 
 
+def prettify_sport_key_label(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    raw = str(value).strip()
+    if not raw:
+        return ""
+    sport_map = {
+        "basketball_nba": "NBA",
+        "baseball_mlb": "MLB",
+        "americanfootball_nfl": "NFL",
+        "icehockey_nhl": "NHL",
+    }
+    return sport_map.get(raw, raw.replace("_", " ").title())
+
+
+def compact_metric_value(value, fallback: str = "N/A", max_length: int = 14) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return fallback
+    text = str(value).strip()
+    if not text:
+        return fallback
+    replacements = {
+        "All live edges": "Live Edges",
+        "Watchlist alerts": "Watchlist",
+        "Live edges": "Live Edges",
+        "live_edges": "Live Edges",
+        "demo_predictions": "Demo Predictions",
+        "Default": "Default",
+        "Safe": "Safe",
+        "Balanced": "Balanced",
+        "Aggressive": "Aggressive",
+    }
+    text = replacements.get(text, text)
+    return text if len(text) <= max_length else f"{text[: max_length - 1].rstrip()}…"
+
+
 def prettify_table_headers(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
@@ -1958,11 +2252,17 @@ def render_smart_pick_section(
     history_picks = int(history_summary.get("history_picks", 0) or 0)
     overall_hit_rate = float(history_summary.get("overall_hit_rate", 0.0) or 0.0)
     overall_roi = float(history_summary.get("overall_roi_per_pick", 0.0) or 0.0)
+    profile_mode = str(history_summary.get("profile_mode") or "default").replace("_", " ").title()
+    profile_reason = str(history_summary.get("profile_reason") or "").strip()
+    calibration_gap = float(history_summary.get("calibration_gap", 0.0) or 0.0)
 
-    summary_col1, summary_col2, summary_col3 = st.columns(3)
+    summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
     summary_col1.metric("History picks", f"{history_picks}")
     summary_col2.metric("Historical hit rate", f"{overall_hit_rate * 100:.1f}%")
     summary_col3.metric("Units per pick", f"{overall_roi:+.2f}")
+    summary_col4.metric("Profile mode", profile_mode)
+    if profile_reason:
+        st.caption(profile_reason)
 
     if scored_df.empty:
         render_empty_state(
@@ -1971,6 +2271,21 @@ def render_smart_pick_section(
             tone="info",
         )
         return
+
+    top_pick = scored_df.head(1)
+    if not top_pick.empty:
+        top_pick_row = top_pick.iloc[0]
+        top_player = str(top_pick_row.get("player_display") or top_pick_row.get("player") or "Top pick")
+        top_bet = format_bet_label(top_pick_row) if "market" in top_pick_row.index else ""
+        trust_col1, trust_col2, trust_col3 = st.columns(3)
+        trust_col1.metric("Top pick history support", str(top_pick_row.get("smart_history_support") or "Model-led"))
+        trust_col2.metric("History lift", f"{float(top_pick_row.get('smart_history_lift', 0.0) or 0.0):+.1f}")
+        trust_col3.metric("Calibration gap", f"{calibration_gap * 100:+.1f} pts")
+        st.info(
+            f"{top_player}"
+            + (f" | {top_bet}" if top_bet else "")
+            + f" \n\n{str(top_pick_row.get('smart_buyer_trust') or top_pick_row.get('smart_summary') or '')}"
+        )
 
     smart_display = build_smart_pick_display(scored_df, top_n=top_n)
     st.dataframe(style_signal_table(compact_numeric_table(smart_display)), use_container_width=True, hide_index=True)
@@ -2210,7 +2525,12 @@ def handle_recommendation_card_action(card: dict[str, str]) -> None:
     st.rerun()
 
 
-def render_recommendation_cards(cards: list[dict[str, str]], title: str, key_prefix: str = "recommendation_cards") -> None:
+def render_recommendation_cards(
+    cards: list[dict[str, str]],
+    title: str,
+    key_prefix: str = "recommendation_cards",
+    max_cards: int | None = None,
+) -> None:
     st.markdown(f"### {title}")
     if not cards:
         render_empty_state(
@@ -2219,7 +2539,8 @@ def render_recommendation_cards(cards: list[dict[str, str]], title: str, key_pre
             tone="info",
         )
         return
-    for idx, card in enumerate(cards):
+    visible_cards = cards[:max_cards] if isinstance(max_cards, int) and max_cards > 0 else cards
+    for idx, card in enumerate(visible_cards):
         confidence_text = str(card.get("confidence") or "").strip()
         confidence_markup = ""
         if confidence_text:
@@ -2480,7 +2801,85 @@ def persist_preference_if_changed(sport_label: str, preference_key: str, value, 
     if current_saved != current_value:
         save_view_preference(sport_label, preference_key, current_value)
 
+
+def apply_buyer_demo_defaults(default_sport: str = "NBA") -> None:
+    app_defaults = {
+        "selected_sport_label": default_sport,
+        "detail_mode": "Simple",
+        "plan_mode": "Core",
+        "theme_mode": "Light",
+        "top_priority_strip_collapsed": False,
+    }
+    for preference_key, value in app_defaults.items():
+        save_view_preference("__app__", preference_key, value)
+
+    sport_defaults = {
+        "board_type": "Sportsbook",
+        "parlay_source": "Live edges",
+        "board_view_mode": "Compact",
+        "edge_view_mode": "Compact",
+        "parlay_view_mode": "Compact",
+        "demo_parlay_view_mode": "Compact",
+        "demo_parlay_style": "Safe",
+    }
+    for preference_key, value in sport_defaults.items():
+        save_view_preference(default_sport, preference_key, value)
+
+    st.session_state["pending_buyer_demo_defaults"] = {
+        "sport": default_sport,
+        "app_detail_mode": "Simple",
+        "app_plan_mode": "Core",
+        "app_theme_mode": "Light",
+        "owner_default_detail_mode": "Simple",
+        "top_priority_strip_collapsed": False,
+        "dashboard_focus_target": "",
+        "results_grading_section_focus_target": "",
+        "parlay_lab_section_focus_target": "",
+        "backtest_section_focus_target": "",
+        f"board_type_{default_sport}": "Sportsbook",
+        f"parlay_source_{default_sport}": "Live edges",
+        f"board_view_mode_{default_sport}": "Compact",
+        f"edge_view_mode_{default_sport}": "Compact",
+        f"parlay_view_mode_{default_sport}": "Compact",
+        f"demo_parlay_view_mode_{default_sport}": "Compact",
+        f"demo_style_{default_sport}": "Safe",
+    }
+
+
+def consume_pending_buyer_demo_defaults() -> None:
+    pending = st.session_state.pop("pending_buyer_demo_defaults", None)
+    if not isinstance(pending, dict) or not pending:
+        return
+
+    default_sport = str(pending.get("sport") or "NBA")
+
+    # Clear widget-backed keys before those widgets are instantiated in this run.
+    # The subsequent sync_view_preference_state calls will then repopulate them
+    # from the saved buyer-demo defaults without tripping Streamlit's lock rules.
+    for session_key in [
+        "selected_sport_label",
+        "app_detail_mode",
+        "app_plan_mode",
+        "app_theme_mode",
+        "owner_default_detail_mode",
+        "top_priority_strip_collapsed",
+        f"board_type_{default_sport}",
+        f"parlay_source_{default_sport}",
+        f"board_view_mode_{default_sport}",
+        f"edge_view_mode_{default_sport}",
+        f"parlay_view_mode_{default_sport}",
+        f"demo_parlay_view_mode_{default_sport}",
+        f"demo_style_{default_sport}",
+    ]:
+        st.session_state.pop(session_key, None)
+
+    st.session_state["dashboard_focus_target"] = str(pending.get("dashboard_focus_target") or "")
+    st.session_state["results_grading_section_focus_target"] = str(pending.get("results_grading_section_focus_target") or "")
+    st.session_state["parlay_lab_section_focus_target"] = str(pending.get("parlay_lab_section_focus_target") or "")
+    st.session_state["backtest_section_focus_target"] = str(pending.get("backtest_section_focus_target") or "")
+
 init_db()
+consume_pending_buyer_demo_defaults()
 
 theme_session_key = "app_theme_mode"
 sync_view_preference_state("__app__", theme_session_key, "theme_mode", "Light")
@@ -2691,6 +3090,7 @@ header[data-testid="stHeader"] [role="button"]:hover,
     grid-template-columns: minmax(260px, 1.15fr) minmax(0, 1.85fr);
     gap: 0.9rem;
     margin: 0.15rem 0 1rem;
+    align-items: start;
 }
 .priority-strip__mode,
 .priority-strip__card {
@@ -2701,9 +3101,11 @@ header[data-testid="stHeader"] [role="button"]:hover,
     box-shadow: 0 10px 24px rgba(8, 15, 28, 0.08);
 }
 .priority-strip__cards {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    align-items: flex-start;
     gap: 0.9rem;
+    align-self: start;
+    height: auto;
 }
 .priority-strip__eyebrow {
     text-transform: uppercase;
@@ -2753,6 +3155,26 @@ header[data-testid="stHeader"] [role="button"]:hover,
     flex-wrap: wrap;
     gap: 0.45rem;
     margin-top: 0.75rem;
+}
+.priority-strip__detail-list {
+    margin-top: 0.8rem;
+    display: grid;
+    gap: 0.42rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid __CARD_BORDER__;
+}
+.priority-strip__detail-list div {
+    color: __BODY_TEXT__;
+    font-size: 0.88rem;
+    line-height: 1.45;
+}
+.priority-strip__detail-list strong {
+    color: __HEADING_TEXT__;
+}
+.priority-strip__card {
+    align-self: start;
+    height: auto;
+    flex: 1 1 0;
 }
 .priority-strip__badge {
     display: inline-block;
@@ -2903,7 +3325,7 @@ header[data-testid="stHeader"] [role="button"]:hover,
         grid-template-columns: 1fr;
     }
     .priority-strip__cards {
-        grid-template-columns: 1fr;
+        flex-direction: column;
     }
     [data-testid="stMetricValue"] {
         font-size: clamp(1.45rem, 4.6vw, 2.1rem);
@@ -3382,6 +3804,12 @@ with st.expander("View Preferences", expanded=False):
         save_view_preference("__app__", "plan_mode", selected_plan_mode)
         st.success("Updated the default packaging mode for this app session.")
         st.rerun()
+    demo_reset_col1, demo_reset_col2 = st.columns([1, 1.3])
+    if demo_reset_col1.button("Reset To Buyer Demo Defaults", use_container_width=True, key="reset_buyer_demo_defaults"):
+        apply_buyer_demo_defaults("NBA")
+        st.success("Reset the app to a calmer buyer demo posture: NBA, Sportsbook, Core plan, Simple view, compact tables, and Light theme.")
+        st.rerun()
+    demo_reset_col2.caption("Use this before a buyer walkthrough when you want the app back in its calmest first-run posture.")
     with st.expander("Feature Map", expanded=False):
         for plan_name, features in PLAN_FEATURE_MAP.items():
             st.markdown(f"**{plan_name}**")
@@ -3409,7 +3837,7 @@ with st.expander("View Preferences", expanded=False):
             use_container_width=True,
             key="download_owner_handoff_docs",
         )
-        download_col2.caption("Bundle includes the refreshed README plus the setup, config, deployment, feature-map, and buyer-handoff guides.")
+        download_col2.caption("Bundle includes the buyer one-sheet, refreshed README, demo walkthrough, setup, config, deployment, feature-map, and buyer-handoff guides.")
 
     st.markdown("#### Stored View Settings")
     view_pref_col1, view_pref_col2 = st.columns(2)
@@ -3474,7 +3902,7 @@ with st.expander("View Preferences", expanded=False):
 
 with st.sidebar:
     st.subheader("Demo Live Data")
-    st.caption("Populate the live tabs with local sample events, odds, projections, and line-history snapshots.")
+    st.caption("Seed local sample events, odds, projections, and line history for a stable demo.")
 
     st.divider()
     st.subheader("SportsGameOdds Guard")
@@ -3506,17 +3934,14 @@ with st.sidebar:
 
     if sport_provider == "sportsgameodds":
         st.caption(
-            f"Per-sync cap: {CONFIG.sportsgameodds_max_events_per_league_sync} events. "
-            f"Cooldown: {CONFIG.sportsgameodds_sync_cooldown_minutes} minutes."
+            f"Cap {CONFIG.sportsgameodds_max_events_per_league_sync} events | Cooldown {CONFIG.sportsgameodds_sync_cooldown_minutes} min"
         )
         st.caption(
-            f"Future-only sync: {CONFIG.sportsgameodds_only_future_events}. "
-            f"Window: next {CONFIG.sportsgameodds_future_window_hours} hours."
+            f"Future-only {CONFIG.sportsgameodds_only_future_events} | Window {CONFIG.sportsgameodds_future_window_hours} hrs"
         )
         if sgo_sync_estimate:
             st.caption(
-                f"Estimated cost for one {sport_label} sync: up to about {sgo_sync_estimate['estimated_entities']} entities "
-                f"across {sgo_sync_estimate['max_events']} events."
+                f"Estimated {sport_label} sync cost: ~{sgo_sync_estimate['estimated_entities']} entities across {sgo_sync_estimate['max_events']} events."
             )
 
         with st.expander("Sync Settings", expanded=False):
@@ -3669,6 +4094,7 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Bankroll")
+    st.caption("Used for sizing and journal suggestions.")
     bankroll_amount = st.number_input(
         "Bankroll ($)",
         min_value=50.0,
@@ -3740,6 +4166,10 @@ with tab0:
     overview_weekly_review = build_weekly_model_review(overview_graded)
     overview_monthly_review = build_monthly_model_review(overview_graded)
     overview_source_summary = build_true_source_summary(overview_graded)
+    overview_smart_weight_profile = apply_smart_weight_overrides(
+        build_smart_weight_profile(overview_graded),
+        manual_smart_weight_overrides,
+    )
     overview_review_action_checklist = build_review_action_checklist(overview_weekly_review, overview_monthly_review)
     overview_journal = get_journal_entries(sport_label)
     overview_bankroll = build_bankroll_summary(overview_journal, bankroll_amount)
@@ -3804,10 +4234,83 @@ with tab0:
         """,
         unsafe_allow_html=True,
     )
+    st.markdown("### Workflow Snapshot")
+    snapshot_col1, snapshot_col2, snapshot_col3, snapshot_col4 = st.columns(4)
+    with snapshot_col1:
+        render_workflow_snapshot_card(
+            eyebrow="Scan",
+            title="Market Review",
+            body="The board and scanner work together to reduce raw searching and surface cleaner prop candidates faster.",
+            metric_label="Live edges",
+            metric_value=str(len(overview_edges)),
+            theme=theme,
+        )
+    with snapshot_col2:
+        render_workflow_snapshot_card(
+            eyebrow="Build",
+            title="Ticket Construction",
+            body="Parlay Lab converts ranked candidates into a more structured sportsbook or DFS build workflow.",
+            metric_label="Watchlist alerts",
+            metric_value=str(len(overview_watchlist_alerts)),
+            theme=theme,
+        )
+    with snapshot_col3:
+        render_workflow_snapshot_card(
+            eyebrow="Track",
+            title="Ticket Memory",
+            body="Saved tickets, tracked picks, and settlement queues keep the workflow persistent instead of one-and-done.",
+            metric_label="Saved tickets",
+            metric_value=str(len(overview_tickets)),
+            theme=theme,
+        )
+    with snapshot_col4:
+        render_workflow_snapshot_card(
+            eyebrow="Learn",
+            title="Review Loop",
+            body="Graded history and review summaries help the product learn what has worked and what needs to tighten up.",
+            metric_label="Graded picks",
+            metric_value=str(len(overview_graded)),
+            theme=theme,
+        )
+    st.caption("The app is structured to read as a workflow first: scan the market, build a ticket, track it, then learn from settled history.")
+    intelligence_cards = build_overview_intelligence_proof(
+        source_summary_df=overview_source_summary,
+        weekly_review=overview_weekly_review,
+        monthly_review=overview_monthly_review,
+        smart_weight_profile=overview_smart_weight_profile,
+        smart_summary=overview_smart_summary,
+        manual_override_enabled=bool(st.session_state.get("smart_weights_override_enabled", False)),
+    )
+    with st.expander("Intelligence Proof", expanded=not is_simple_mode):
+        st.caption("This section explains why the app is leaning the way it is right now, without forcing every analytical detail into the first screen.")
+        proof_col1, proof_col2, proof_col3 = st.columns(3)
+        proof_columns = [proof_col1, proof_col2, proof_col3]
+        for idx, card in enumerate(intelligence_cards):
+            with proof_columns[idx]:
+                render_workflow_snapshot_card(
+                    eyebrow=card["eyebrow"],
+                    title=card["title"],
+                    body=card["body"],
+                    metric_label=card["metric_label"],
+                    metric_value=card["metric_value"],
+                    theme=theme,
+                )
     if is_simple_mode:
         st.caption(f"Packaging posture: `{current_plan_mode}`. {plan_summary['body']}")
     elif is_pro_mode and not is_pro_plan:
         st.info("`Core` plan is intentionally buyer-friendly. It keeps advanced diagnostics packaged out, even in `Pro` view. Switch the product plan to `Pro` or `Owner` in `View Preferences` when you want the full analyst surface.")
+    buyer_demo_col1, buyer_demo_col2, buyer_demo_col3 = st.columns(3)
+    if buyer_demo_col1.button("Buyer Demo: Scan", key="overview_buyer_demo_scan", use_container_width=True):
+        set_dashboard_focus("edge_scanner")
+        st.rerun()
+    if buyer_demo_col2.button("Buyer Demo: Build", key="overview_buyer_demo_build", use_container_width=True):
+        set_dashboard_focus("parlay_lab")
+        st.rerun()
+    if buyer_demo_col3.button("Buyer Demo: Review", key="overview_buyer_demo_review", use_container_width=True):
+        set_dashboard_focus("results_grading")
+        set_results_grading_focus("saved_tickets")
+        st.rerun()
+    st.caption("Quick buyer path: scan the board, build a ticket, then review saved results without hunting through the full app.")
     if is_owner_plan:
         owner_docs_df = pd.DataFrame(build_owner_doc_rows())
         ready_owner_docs = int((owner_docs_df["Status"] == "Ready").sum()) if not owner_docs_df.empty else 0
@@ -3883,7 +4386,21 @@ with tab0:
         sport_label=sport_label,
         is_dfs=is_dfs,
     )
-    render_recommendation_cards(overview_next_step_cards, "Suggested Next Steps", key_prefix="overview_next_steps")
+    if is_simple_mode and len(overview_next_step_cards) > 2:
+        render_recommendation_cards(
+            overview_next_step_cards,
+            "Suggested Next Steps",
+            key_prefix="overview_next_steps",
+            max_cards=2,
+        )
+        with st.expander(f"More Suggested Next Steps ({max(len(overview_next_step_cards) - 2, 0)})", expanded=False):
+            render_recommendation_cards(
+                overview_next_step_cards[2:],
+                "Deeper Recommendations",
+                key_prefix="overview_next_steps_more",
+            )
+    else:
+        render_recommendation_cards(overview_next_step_cards, "Suggested Next Steps", key_prefix="overview_next_steps")
     if is_simple_mode:
         st.caption("Simple view keeps the operating guidance, builder flow, and ticket tracking up front. Switch to `Pro` for deeper audit, review, and experiment diagnostics.")
 
@@ -4196,14 +4713,22 @@ with tab2:
     if st.session_state.get("dashboard_focus_target") == "edge_scanner":
         st.success("Workflow focus is set to Edge Scanner. This is the fastest place to save live edges for grading or watchlist review.")
     edge_df = pd.DataFrame()
+    edge_all_sports_pool = st.checkbox(
+        "Include all sports pool (NBA + MLB + NFL)",
+        value=False,
+        key=f"edge_all_sports_pool_{sport_label}",
+        help="Phase 1 cross-sport mode. Aggregates ranked live rows across NBA, MLB, and NFL.",
+    )
+    edge_scan_keys = get_phase1_multi_sport_keys() if edge_all_sports_pool else live_sport_keys
+    edge_coverage_map = get_phase1_multi_sport_coverage_map() if edge_all_sports_pool else market_coverage_map
 
-    if live_sport_keys:
-        edge_df = scan_edges(sport_key=live_sport_keys, is_dfs=is_dfs)
+    if edge_scan_keys:
+        edge_df = scan_edges(sport_key=edge_scan_keys, is_dfs=is_dfs)
 
     if edge_df.empty:
         render_empty_state("No edge data found", "You may need synced market lines and saved projections before the scanner can rank props.", tone="warning")
     else:
-        edge_df = apply_market_coverage(edge_df, market_coverage_map)
+        edge_df = apply_market_coverage(edge_df, edge_coverage_map)
         edge_df = annotate_stake_recommendations(
             edge_df,
             bankroll=bankroll_amount,
@@ -4211,9 +4736,14 @@ with tab2:
             kelly_fraction_cap=fractional_kelly,
             max_units=max_bet_units,
         )
-        edge_df = annotate_watchlist_movement(edge_df, sport_label)
+        if edge_all_sports_pool:
+            edge_df["watchlist_key"] = ""
+            edge_df["is_watchlisted"] = False
+        else:
+            edge_df = annotate_watchlist_movement(edge_df, sport_label)
+        edge_df = annotate_display_sport(edge_df)
         edge_df = annotate_player_display(edge_df)
-        edge_graded_history = get_graded_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
+        edge_graded_history = get_graded_picks(edge_scan_keys) if edge_scan_keys else pd.DataFrame()
         edge_df, edge_smart_summary = score_smart_picks(edge_df, edge_graded_history, override_profile=manual_smart_weight_overrides)
         edge_view_mode = st.radio(
             "Edge view",
@@ -4223,7 +4753,7 @@ with tab2:
             on_change=persist_view_preference_from_session,
             args=(sport_label, edge_view_session_key, "edge_view_mode"),
         )
-        alert_watchlist_edges = get_watchlist_alerts(edge_df, sport_label)
+        alert_watchlist_edges = get_watchlist_alerts(edge_df, sport_label) if not edge_all_sports_pool else pd.DataFrame()
         show_non_live_edges = st.checkbox(
             "Show demo-only/provider-unavailable edge rows",
             key=show_non_live_edges_session_key,
@@ -4259,12 +4789,14 @@ with tab2:
             key=edge_watchlist_only_session_key,
             on_change=persist_view_preference_from_session,
             args=(sport_label, edge_watchlist_only_session_key, "edge_watchlist_only"),
+            disabled=edge_all_sports_pool,
         )
         edge_alerts_only = edge_filter_col6.checkbox(
             "Alerts only",
             key=edge_alerts_only_session_key,
             on_change=persist_view_preference_from_session,
             args=(sport_label, edge_alerts_only_session_key, "edge_alerts_only"),
+            disabled=edge_all_sports_pool,
         )
         persist_preference_if_changed(sport_label, "edge_market_filter", edge_market_filter, "")
         persist_preference_if_changed(sport_label, "edge_sort_by", edge_sort_by, "confidence")
@@ -4284,6 +4816,8 @@ with tab2:
             alert_keys = set(alert_watchlist_edges.get("watchlist_key", pd.Series(dtype=str)).tolist())
             if "watchlist_key" in display_edges.columns:
                 display_edges = display_edges[display_edges["watchlist_key"].isin(alert_keys)].copy()
+        if edge_all_sports_pool:
+            st.caption("All-sports pool is active. Watchlist-only and alert-only filters stay off in this mode.")
         if display_edges.empty:
             render_empty_state("No rows match this edge view", "Try relaxing the filters, thresholds, or watchlist-only alert view.", tone="info")
         else:
@@ -4300,6 +4834,10 @@ with tab2:
                 if edge_view_mode == "Compact"
                 else build_expanded_edge_display(display_edges)
             )
+            if edge_all_sports_pool and "sport" in display_edges.columns:
+                edge_display["sport"] = display_edges["sport"]
+                preferred_columns = ["sport"] + [col for col in edge_display.columns if col != "sport"]
+                edge_display = edge_display[preferred_columns]
             st.dataframe(style_signal_table(compact_numeric_table(edge_display)), use_container_width=True)
             st.download_button(
                 "Export Edge Scanner CSV",
@@ -4337,9 +4875,14 @@ with tab2:
                     audit_metric_col1, audit_metric_col2, audit_metric_col3, audit_metric_col4 = st.columns(4)
                     audit_metric_col1.metric("Smart score", f"{float(audit_row.get('smart_score', 0.0) or 0.0):.1f}")
                     audit_metric_col2.metric("Expected win %", f"{float(audit_row.get('smart_expected_win_rate', 0.0) or 0.0) * 100:.1f}%")
-                    audit_metric_col3.metric("Profile mode", str(audit_row.get("smart_profile_mode") or "default").replace("_", " ").title())
-                    audit_metric_col4.metric("History picks used", f"{int(audit_row.get('history_picks_used', 0) or 0)}")
-                    st.caption(str(audit_row.get("smart_summary") or ""))
+                    audit_metric_col3.metric("History support", str(audit_row.get("smart_history_support") or "Model-led"))
+                    audit_metric_col4.metric("History lift", f"{float(audit_row.get('smart_history_lift', 0.0) or 0.0):+.1f}")
+                    st.caption(
+                        "Profile mode: "
+                        + str(audit_row.get("smart_profile_mode") or "default").replace("_", " ").title()
+                        + f" | History picks used: {int(audit_row.get('history_picks_used', 0) or 0)}"
+                    )
+                    st.info(str(audit_row.get("smart_buyer_trust") or audit_row.get("smart_summary") or ""))
 
                     history_compare_df = build_smart_history_comparison(audit_row)
                     if not history_compare_df.empty:
@@ -4378,39 +4921,42 @@ with tab2:
                             hide_index=True,
                         )
         else:
-            st.caption("Detailed smart-score audit is available in `Pro` view.")
+            st.caption("Detailed smart audit is available in `Pro` view.")
 
         track_count = st.slider("Track top live edges", min_value=1, max_value=25, value=5, key="track_top_edges")
         if st.button("Save Top Live Edges For Grading", use_container_width=True):
             rows_to_track = display_edges.head(track_count).copy()
-            tracked = track_edge_rows(rows_to_track, sport_key=live_sport_keys[0], source="edge_scanner")
+            tracked = track_edge_rows(rows_to_track, sport_key=(None if edge_all_sports_pool else live_sport_keys[0]), source="edge_scanner")
             st.success(f"Saved {tracked} live edge rows to the grading tracker.")
         smart_track_count = st.slider("Track top smart-ranked edges", min_value=1, max_value=25, value=5, key="track_top_smart_edges")
         if st.button("Save Top Smart Picks For Grading", use_container_width=True):
             smart_rows_to_track = display_edges.sort_values(["smart_score", "smart_expected_win_rate", "edge"], ascending=False).head(smart_track_count).copy()
             smart_source = active_smart_tracking_source()
-            tracked = track_edge_rows(smart_rows_to_track, sport_key=live_sport_keys[0], source=smart_source)
+            tracked = track_edge_rows(smart_rows_to_track, sport_key=(None if edge_all_sports_pool else live_sport_keys[0]), source=smart_source)
             st.success(f"Saved {tracked} smart-ranked picks to the grading tracker under `{format_source_label(smart_source)}`.")
-        edge_watchlist_options = build_watchlist_option_labels(display_edges.head(30))
-        selected_edge_watchlist = st.multiselect(
-            "Add edge rows to watchlist",
-            options=list(edge_watchlist_options.keys()),
-            key="edge_watchlist_selection",
-        )
-        if st.button("Save Selected Edge Rows To Watchlist", use_container_width=True):
-            added = add_watchlist_rows(
-                display_edges,
-                [edge_watchlist_options[label] for label in selected_edge_watchlist],
-                sport_label,
+        if edge_all_sports_pool:
+            st.caption("Watchlist save is disabled in all-sports mode for now. Switch off all-sports to save into a single-sport watchlist.")
+        else:
+            edge_watchlist_options = build_watchlist_option_labels(display_edges.head(30))
+            selected_edge_watchlist = st.multiselect(
+                "Add edge rows to watchlist",
+                options=list(edge_watchlist_options.keys()),
+                key="edge_watchlist_selection",
             )
-            if added > 0:
-                st.success(f"Added {added} edge rows to the watchlist.")
-            else:
-                st.info("No new edge rows were added to the watchlist.")
-            st.rerun()
+            if st.button("Save Selected Edge Rows To Watchlist", use_container_width=True):
+                added = add_watchlist_rows(
+                    display_edges,
+                    [edge_watchlist_options[label] for label in selected_edge_watchlist],
+                    sport_label,
+                )
+                if added > 0:
+                    st.success(f"Added {added} edge rows to the watchlist.")
+                else:
+                    st.info("No new edge rows were added to the watchlist.")
+                st.rerun()
 
 with tab3:
-    render_section_header("Parlay Lab", "Build live or demo tickets with clearer stake planning and model context.")
+    render_section_header("Parlay Lab", "Build live or demo tickets with cleaner stake planning and clearer model context.")
     if st.session_state.get("dashboard_focus_target") == "parlay_lab":
         st.success("Notification focus is set to Parlay Lab. This is the right place to turn strong watchlist alerts into a draft ticket.")
     parlay_focus_target = st.session_state.get("parlay_lab_section_focus_target", "")
@@ -4464,14 +5010,22 @@ with tab3:
     if source == "Live edges":
         selected_live_dfs_adapter = None
         edge_df = pd.DataFrame()
+        parlay_all_sports_pool = st.checkbox(
+            "Include all sports pool (NBA + MLB + NFL)",
+            value=False,
+            key=f"parlay_all_sports_pool_{sport_label}",
+            help="Phase 1 cross-sport mode for Parlay Lab live builds.",
+        )
+        parlay_scan_keys = get_phase1_multi_sport_keys() if parlay_all_sports_pool else live_sport_keys
+        parlay_coverage_map = get_phase1_multi_sport_coverage_map() if parlay_all_sports_pool else market_coverage_map
 
-        if live_sport_keys:
-            edge_df = scan_edges(sport_key=live_sport_keys, is_dfs=is_dfs)
+        if parlay_scan_keys:
+            edge_df = scan_edges(sport_key=parlay_scan_keys, is_dfs=is_dfs)
 
         if edge_df.empty:
             render_empty_state("No live parlay candidates yet", "The live edge pool is empty, so Parlay Lab cannot rank legs right now.", tone="info")
         else:
-            edge_df = apply_market_coverage(edge_df, market_coverage_map)
+            edge_df = apply_market_coverage(edge_df, parlay_coverage_map)
             edge_df = annotate_stake_recommendations(
                 edge_df,
                 bankroll=bankroll_amount,
@@ -4479,9 +5033,14 @@ with tab3:
                 kelly_fraction_cap=fractional_kelly,
                 max_units=max_bet_units,
             )
-            edge_df = annotate_watchlist_movement(edge_df, sport_label)
+            if parlay_all_sports_pool:
+                edge_df["watchlist_key"] = ""
+                edge_df["is_watchlisted"] = False
+            else:
+                edge_df = annotate_watchlist_movement(edge_df, sport_label)
+            edge_df = annotate_display_sport(edge_df)
             edge_df = annotate_player_display(edge_df)
-            parlay_graded_history = get_graded_picks(live_sport_keys) if live_sport_keys else pd.DataFrame()
+            parlay_graded_history = get_graded_picks(parlay_scan_keys) if parlay_scan_keys else pd.DataFrame()
             edge_df, _ = score_smart_picks(edge_df, parlay_graded_history, override_profile=manual_smart_weight_overrides)
             parlay_view_mode = st.radio(
                 "Parlay table view",
@@ -4493,10 +5052,19 @@ with tab3:
             )
             parlay_candidate_pool = st.radio(
                 "Live candidate pool",
-                ["All live edges", "Watchlist alerts"],
+                ["All live edges"] if parlay_all_sports_pool else ["All live edges", "Watchlist alerts"],
                 horizontal=True,
                 key="parlay_live_candidate_pool",
             )
+            sport_mix_mode = "Best overall"
+            if parlay_all_sports_pool:
+                sport_mix_mode = st.radio(
+                    "All-sports mix mode",
+                    ["Best overall", "Balanced by sport"],
+                    horizontal=True,
+                    key=f"parlay_mix_mode_{sport_label}",
+                    help="Best overall uses pure rank. Balanced by sport takes one top leg per sport first, then fills the rest by rank.",
+                )
             if st.session_state.get("parlay_live_use_watchlist_alerts"):
                 st.info("Parlay Lab is currently focused on promoted watchlist alerts.")
             legs = st.slider(
@@ -4552,12 +5120,50 @@ with tab3:
             candidates = edge_df.copy()
             candidates = candidates[candidates["coverage_status"] == "Live"].copy()
             if parlay_focus_target == "builder":
-                st.info("Parlay Lab jump is focused on the live builder settings and ticket draft below.")
+                st.info("Parlay Lab jump is focused on the live builder controls and ticket draft below.")
             if parlay_candidate_pool == "Watchlist alerts":
                 candidates = get_watchlist_alerts(candidates, sport_label)
             else:
                 candidates = candidates[candidates["confidence"] >= min_confidence].copy()
                 candidates = candidates.sort_values(["smart_score", "confidence", "edge"], ascending=False)
+
+            parlay_quick_market_focus = "Any market"
+            parlay_market_filter_values: list[str] = []
+            if not candidates.empty and "market" in candidates.columns:
+                market_control_col1, market_control_col2 = st.columns([1, 2])
+                parlay_quick_market_focus = market_control_col1.selectbox(
+                    "Quick market focus",
+                    ["Any market", "Pitcher strikeouts"],
+                    index=0,
+                    key=f"parlay_quick_market_focus_{sport_label}",
+                    help="Use this to quickly force specific market types in live builds.",
+                )
+                available_market_values = (
+                    candidates["market"].dropna().astype(str).drop_duplicates().sort_values().tolist()
+                )
+                parlay_market_filter_values = market_control_col2.multiselect(
+                    "Market filter (optional)",
+                    options=available_market_values,
+                    default=[],
+                    key=f"parlay_market_filter_values_{sport_label}",
+                    format_func=lambda market: f"{prettify_market_label(market)} ({market})",
+                    help="Leave empty for all markets, or pick exact markets to include.",
+                )
+
+                if parlay_quick_market_focus == "Pitcher strikeouts":
+                    strikeout_mask = candidates["market"].astype(str).str.contains("strikeout", case=False, na=False)
+                    candidates = candidates[strikeout_mask].copy()
+
+                if parlay_market_filter_values:
+                    candidates = candidates[candidates["market"].astype(str).isin(parlay_market_filter_values)].copy()
+            parlay_market_filter_active = (
+                parlay_quick_market_focus != "Any market" or bool(parlay_market_filter_values)
+            )
+
+            if parlay_all_sports_pool and not candidates.empty and "sport" in candidates.columns:
+                sport_counts = candidates["sport"].value_counts()
+                mix_snapshot = ", ".join([f"{sport}: {int(count)}" for sport, count in sport_counts.items()])
+                st.caption(f"Current all-sports candidate mix: {mix_snapshot}")
 
             st.info(
                 (
@@ -4566,7 +5172,11 @@ with tab3:
                     else (
                         "Watchlist alert pool is empty right now. Adjust watchlist thresholds or switch back to all live edges."
                         if parlay_candidate_pool == "Watchlist alerts"
-                        else "No live edges currently meet the selected confidence threshold. Lower the threshold or sync new market data."
+                        else (
+                            "No live edges match the current market filter. Clear or widen the market filter to include more options."
+                            if parlay_market_filter_active
+                            else "No live edges currently meet the selected confidence threshold. Lower the threshold or sync new market data."
+                        )
                     )
                 )
             )
@@ -4576,24 +5186,31 @@ with tab3:
             elif parlay_candidate_pool == "Watchlist alerts":
                 st.caption("Drafting the ticket from the current watchlist alert pool.")
 
-            if not allow_same_player:
-                candidates = candidates.drop_duplicates(subset=["player"], keep="first")
-
-            parlay_df = candidates.head(legs).copy()
+            parlay_df = select_live_parlay_candidates(
+                candidates=candidates,
+                legs=legs,
+                allow_same_player=allow_same_player,
+                balanced_sport_mix=parlay_all_sports_pool and sport_mix_mode == "Balanced by sport",
+            )
             if saved_ticket_override_active and saved_ticket_source == "live_edges" and saved_ticket_payload:
                 parlay_df = pd.DataFrame(saved_ticket_payload).copy()
-            live_ticket_name = st.text_input("Live ticket name", value=f"{sport_label} Live Ticket", key="live_ticket_name")
+            default_live_ticket_name = "All Sports Live Ticket" if parlay_all_sports_pool else f"{sport_label} Live Ticket"
+            current_live_ticket_name = str(st.session_state.get("live_ticket_name", "")).strip()
+            if current_live_ticket_name in {"", "All Sports Live Ticket", f"{sport_label} Live Ticket"}:
+                st.session_state["live_ticket_name"] = default_live_ticket_name
+            live_ticket_name = st.text_input("Live ticket name", key="live_ticket_name")
             live_ticket_notes = st.text_input("Live ticket notes", key="live_ticket_notes")
 
             if parlay_df.empty or len(parlay_df) < legs:
                 render_empty_state("Not enough live legs", "Loosen the confidence threshold, change the candidate pool, or allow multiple picks on the same player.", tone="warning")
             else:
                 if saved_ticket_override_active and saved_ticket_source == "live_edges" and saved_ticket_payload:
-                    st.caption("Currently rendering the selected saved live ticket inside Parlay Lab.")
+                    st.caption("Currently loading the selected saved live ticket inside Parlay Lab.")
                 else:
-                    st.caption("Live parlay mode only uses markets currently marked `Live` for this provider.")
+                    st.caption("Live ticket mode only uses markets currently marked `Live` for this provider.")
                 live_snapshot_col1, live_snapshot_col2, live_snapshot_col3, live_snapshot_col4 = st.columns(4)
-                live_snapshot_col1.metric("Pool", parlay_candidate_pool)
+                pool_label = "All sports" if parlay_all_sports_pool else parlay_candidate_pool
+                live_snapshot_col1.metric("Pool", compact_metric_value(pool_label, max_length=12))
                 live_snapshot_col2.metric("Legs", str(legs))
                 live_snapshot_col3.metric("Min confidence", f"{min_confidence}")
                 live_snapshot_col4.metric("Same player", "Allowed" if allow_same_player else "Blocked")
@@ -4637,6 +5254,7 @@ with tab3:
                 live_parlay_columns = (
                     [
                         "leg_rank",
+                        "sport",
                         "summary",
                         "model_prob",
                         "edge",
@@ -4649,6 +5267,7 @@ with tab3:
                     else [
                         "leg_rank",
                         "event_id",
+                        "sport",
                         "player",
                         "player_team",
                         "market",
@@ -4693,9 +5312,16 @@ with tab3:
                             parlay_audit_col1, parlay_audit_col2, parlay_audit_col3, parlay_audit_col4 = st.columns(4)
                             parlay_audit_col1.metric("Smart score", f"{float(selected_parlay_audit.get('smart_score', 0.0) or 0.0):.1f}")
                             parlay_audit_col2.metric("Expected win %", f"{float(selected_parlay_audit.get('smart_expected_win_rate', 0.0) or 0.0) * 100:.1f}%")
-                            parlay_audit_col3.metric("Tier", str(selected_parlay_audit.get("smart_tier") or "N/A"))
-                            parlay_audit_col4.metric("History picks", f"{int(selected_parlay_audit.get('history_picks_used', 0) or 0)}")
-                            st.caption(str(selected_parlay_audit.get("smart_summary") or ""))
+                            parlay_audit_col3.metric("History support", str(selected_parlay_audit.get("smart_history_support") or "Model-led"))
+                            parlay_audit_col4.metric("History lift", f"{float(selected_parlay_audit.get('smart_history_lift', 0.0) or 0.0):+.1f}")
+                            st.caption(
+                                "Tier: "
+                                + str(selected_parlay_audit.get("smart_tier") or "N/A")
+                                + " | Profile mode: "
+                                + str(selected_parlay_audit.get("smart_profile_mode") or "default").replace("_", " ").title()
+                                + f" | History picks used: {int(selected_parlay_audit.get('history_picks_used', 0) or 0)}"
+                            )
+                            st.info(str(selected_parlay_audit.get("smart_buyer_trust") or selected_parlay_audit.get("smart_summary") or ""))
                             parlay_history_compare = build_smart_history_comparison(selected_parlay_audit)
                             if not parlay_history_compare.empty:
                                 st.markdown("##### Full History vs Recent Form")
@@ -4751,6 +5377,8 @@ with tab3:
                         metadata=(
                             {
                                 "candidate_pool": parlay_candidate_pool,
+                                "all_sports_pool": bool(parlay_all_sports_pool),
+                                "all_sports_mix_mode": sport_mix_mode,
                                 "min_confidence": int(min_confidence),
                                 "allow_same_player": bool(allow_same_player),
                                 "smart_profile_mode": str(parlay_df.get("smart_profile_mode", pd.Series([""])).iloc[0]) if "smart_profile_mode" in parlay_df.columns and not parlay_df.empty else "",
@@ -4761,6 +5389,8 @@ with tab3:
                             if is_dfs and selected_live_dfs_adapter
                             else {
                                 "candidate_pool": parlay_candidate_pool,
+                                "all_sports_pool": bool(parlay_all_sports_pool),
+                                "all_sports_mix_mode": sport_mix_mode,
                                 "min_confidence": int(min_confidence),
                                 "allow_same_player": bool(allow_same_player),
                                 "smart_profile_mode": str(parlay_df.get("smart_profile_mode", pd.Series([""])).iloc[0]) if "smart_profile_mode" in parlay_df.columns and not parlay_df.empty else "",
@@ -5084,7 +5714,7 @@ with tab4:
                     st.line_chart(pivot_df)
 
 with tab5:
-    render_section_header("Results & Grading", "Resolve props, review bankroll movement, and compare actual outcomes against model expectations.")
+    render_section_header("Results & Grading", "Review tracked picks, settle results, and compare saved tickets against current model context.")
     focus_target = st.session_state.get("dashboard_focus_target")
     results_focus_target = st.session_state.get("results_grading_section_focus_target")
     if focus_target == "results_grading":
@@ -5119,7 +5749,7 @@ with tab5:
                 if not unresolved_tracked_df.empty
                 else "No tracked picks are currently waiting for settlement."
             ),
-            "ActionLabel": "Review Settlements" if not unresolved_tracked_df.empty else "Stay Clear",
+            "ActionLabel": "Open Settlement Queue" if not unresolved_tracked_df.empty else "Queue Is Clear",
             "ActionTarget": "results_grading",
             "ActionSectionTarget": "enter_settled_result",
         },
@@ -5150,7 +5780,7 @@ with tab5:
     ]
 
     st.markdown("### Workflow Status")
-    st.caption("Use either the workflow jump button or the action button on each card to move straight into the relevant queue or journal.")
+    st.caption("Use the workflow jump or action button on each card to move straight into the right queue, review step, or journal.")
     status_tones = (
         {
             "Ready": {"bg": "#0f2b1f", "fg": "#8ee3b7", "border": "#1f6b4f", "card": "#0f1722", "title": "#e5eef8", "body": "#a7b6c8"},
@@ -5807,7 +6437,7 @@ with tab5:
 
     st.markdown("### Enter Settled Result")
     if results_focus_target == "enter_settled_result":
-        st.info("Workflow jump is focused on the settlement queue. Enter or sync results below.")
+        st.info("Workflow jump is focused on the settlement queue. Enter or sync settled results below.")
     selected_pick_label = st.selectbox(
         "Tracked pick",
         [""] + selection_options,
@@ -5843,7 +6473,7 @@ with tab5:
     if ungraded_df.empty:
         render_empty_state(
             "No ungraded tracked picks",
-            "Save live edges for grading or wait for new tracked picks to settle into this queue. Resolution controls and tracked-pick review rows will appear here after your first tracked pick.",
+            "Save live edges for grading or wait for new tracked picks to settle into this queue. Review controls and tracked-pick rows will appear here after your first tracked pick.",
             tone="neutral",
         )
     else:
@@ -6012,7 +6642,7 @@ with tab5:
     if ticket_summary_df.empty:
         render_empty_state(
             "No saved tickets yet",
-            "Save a ticket from Parlay Lab to start comparing, grading, and tracking live slips here. Ticket summaries, leg breakdowns, and model-vs-ticket comparison tools will appear here after your first saved ticket.",
+            "Save a ticket from Parlay Lab to start comparing, reviewing, and tracking live slips here. Ticket summaries, leg breakdowns, and ticket review tools will appear here after your first saved ticket.",
             tone="neutral",
         )
     else:
@@ -6051,9 +6681,39 @@ with tab5:
             display_tickets["resolved_ratio"] = (pd.to_numeric(display_tickets["resolved_ratio"], errors="coerce") * 100).round(1)
         if "source" in display_tickets.columns:
             display_tickets["source"] = display_tickets["source"].map(format_source_label)
+        if "build_candidate_pool" in display_tickets.columns:
+            display_tickets["build_candidate_pool"] = display_tickets["build_candidate_pool"].map(
+                lambda value: compact_metric_value(value, fallback="N/A", max_length=24)
+            )
+        if "build_style" in display_tickets.columns:
+            display_tickets["build_style"] = display_tickets["build_style"].map(
+                lambda value: str(value or "N/A").replace("_", " ").title()
+            )
         if "build_smart_profile_mode" in display_tickets.columns:
             display_tickets["build_smart_profile_mode"] = display_tickets["build_smart_profile_mode"].map(lambda value: str(value or "").replace("_", " ").title())
-        st.dataframe(compact_numeric_table(display_tickets), use_container_width=True)
+        if "ticket_status_live" in display_tickets.columns:
+            display_tickets["ticket_status_live"] = display_tickets["ticket_status_live"].map(
+                lambda value: str(value or "Unknown").replace("_", " ").title()
+            )
+        display_tickets = prettify_table_headers(compact_numeric_table(display_tickets))
+        display_tickets = display_tickets.rename(
+            columns={
+                "Ticket Id": "Ticket ID",
+                "Dfs Target App": "DFS App",
+                "Leg Count": "Legs",
+                "Avg Model Prob": "Avg Model %",
+                "Build Candidate Pool": "Candidate Pool",
+                "Build Min Confidence": "Min Confidence",
+                "Build Smart Profile Mode": "Profile Mode",
+                "Ticket Outcome Score": "Outcome Score",
+                "Ticket Profit Units": "Est. Units",
+                "Ticket Missing Price Legs": "Missing Prices",
+                "Resolved Ratio": "Resolved %",
+                "Ticket Status Live": "Status",
+                "Created At": "Created",
+            }
+        )
+        st.dataframe(display_tickets, use_container_width=True)
         ticket_export_df = export_ticket_legs_for_csv(sport_label)
         if not ticket_export_df.empty:
             st.download_button(
@@ -6076,9 +6736,15 @@ with tab5:
             except Exception as exc:
                 st.error(str(exc))
 
+        ticket_id_options = (
+            pd.to_numeric(ticket_summary_df["ticket_id"], errors="coerce")
+            .dropna()
+            .astype(int)
+            .tolist()
+        )
         selected_ticket_id = st.selectbox(
             "Inspect saved ticket",
-            display_tickets["ticket_id"].tolist(),
+            ticket_id_options,
             key="selected_ticket_id",
         )
         selected_legs = get_ticket_legs(int(selected_ticket_id))
@@ -6087,8 +6753,8 @@ with tab5:
             ticket_row = selected_ticket_meta.iloc[0]
             dfs_adapter = get_dfs_adapter_by_key(str(ticket_row.get("dfs_target_key") or ""))
             snapshot_col1, snapshot_col2, snapshot_col3, snapshot_col4 = st.columns(4)
-            snapshot_col1.metric("Ticket", str(ticket_row["name"]))
-            snapshot_col2.metric("Source", str(ticket_row["source"]).replace("_", " ").title())
+            snapshot_col1.metric("Ticket", compact_metric_value(ticket_row["name"], max_length=12))
+            snapshot_col2.metric("Source", compact_metric_value(str(ticket_row["source"]).replace("_", " ").title(), max_length=12))
             snapshot_col3.metric("Legs", str(ticket_row["leg_count"]))
             snapshot_col4.metric("Status", str(ticket_row["ticket_status_live"]).replace("_", " ").title())
 
@@ -6115,8 +6781,8 @@ with tab5:
                     f"Estimated ticket units use stored leg prices when available. {int(float(ticket_row['ticket_missing_price_legs']))} leg(s) were missing price data, so even-money fallback pricing was used for those legs."
                 )
             build_col1, build_col2, build_col3, build_col4 = st.columns(4)
-            build_col1.metric("Candidate pool", str(ticket_row.get("build_candidate_pool") or "N/A"))
-            build_col2.metric("Build style", str(ticket_row.get("build_style") or "N/A"))
+            build_col1.metric("Candidate pool", compact_metric_value(ticket_row.get("build_candidate_pool"), max_length=12))
+            build_col2.metric("Build style", compact_metric_value(ticket_row.get("build_style"), max_length=12))
             build_col3.metric(
                 "Build min confidence",
                 str(int(ticket_row["build_min_confidence"])) if pd.notna(ticket_row.get("build_min_confidence")) else "N/A",
@@ -6212,7 +6878,7 @@ with tab5:
                     ticket_row=ticket_row,
                     legs_df=selected_legs,
                 )
-                st.success("Sent this saved ticket back to Parlay Lab.")
+                st.success("Loaded this saved ticket back into Parlay Lab.")
                 st.rerun()
 
             if ticket_looks_like_dfs(ticket_row, selected_legs):
@@ -6226,7 +6892,7 @@ with tab5:
                 )
 
             if not selected_ticket_meta.empty:
-                st.markdown("#### Ticket vs Model Comparison")
+                st.markdown("#### Saved Ticket Review")
 
                 if ticket_row["source"] == "live_edges":
                     ticket_legs_with_results = get_ticket_legs_with_results(int(selected_ticket_id), sport_label)
@@ -6270,7 +6936,7 @@ with tab5:
                     render_recommendation_cards(ticket_review_cards, "Ticket Review Insights")
 
                     if not ticket_legs_with_results.empty:
-                        st.markdown("##### Ticket Leg Outcomes")
+                        st.markdown("##### Leg Outcome Status")
                         ticket_leg_outcomes_display = ticket_legs_with_results[
                             [
                                 "leg_rank",
@@ -6290,13 +6956,23 @@ with tab5:
                         ticket_leg_outcomes_display["winning_side"] = ticket_leg_outcomes_display["winning_side"].map(
                             lambda value: format_pending_result_value(value, "Awaiting result")
                         )
+                        if "market" in ticket_leg_outcomes_display.columns:
+                            ticket_leg_outcomes_display["market"] = ticket_leg_outcomes_display["market"].map(prettify_market_label)
+                        ticket_leg_outcomes_display = prettify_table_headers(compact_numeric_table(ticket_leg_outcomes_display))
+                        ticket_leg_outcomes_display = ticket_leg_outcomes_display.rename(
+                            columns={
+                                "Actual Value": "Actual",
+                                "Winning Side": "Result Side",
+                                "Grade": "Status",
+                            }
+                        )
                         st.dataframe(
-                            compact_numeric_table(ticket_leg_outcomes_display),
+                            ticket_leg_outcomes_display,
                             use_container_width=True,
                         )
 
                     if not current_benchmark.empty:
-                        st.markdown("##### Current Top Model Legs")
+                        st.markdown("##### Current Top Comparison Legs")
                         benchmark_display = prefer_player_display(annotate_player_display(current_benchmark))
                         benchmark_display = benchmark_display[
                             [
@@ -6318,7 +6994,16 @@ with tab5:
                         ].copy()
                         benchmark_display["model_prob"] = (benchmark_display["model_prob"] * 100).round(2)
                         benchmark_display["edge"] = (benchmark_display["edge"] * 100).round(2)
-                        st.dataframe(compact_numeric_table(benchmark_display), use_container_width=True)
+                        if "market" in benchmark_display.columns:
+                            benchmark_display["market"] = benchmark_display["market"].map(prettify_market_label)
+                        benchmark_display = prettify_table_headers(compact_numeric_table(benchmark_display))
+                        benchmark_display = benchmark_display.rename(
+                            columns={
+                                "Recommended Units": "Units",
+                                "Recommended Stake": "Stake",
+                            }
+                        )
+                        st.dataframe(benchmark_display, use_container_width=True)
 
                     saved_ticket_stake_plan = recommend_parlay_stake(
                         selected_legs,
@@ -6327,7 +7012,7 @@ with tab5:
                         base_fraction=max(0.03, fractional_kelly * 0.5),
                         max_units=max(1.0, max_bet_units - 0.5),
                     )
-                    st.markdown("##### Ticket Stake Plan")
+                    st.markdown("##### Suggested Stake Plan")
                     saved_stake_col1, saved_stake_col2, saved_stake_col3, saved_stake_col4 = st.columns(4)
                     saved_stake_col1.metric("Suggested Ticket Stake", f"{saved_ticket_stake_plan['recommended_units']}u")
                     saved_stake_col2.metric("Suggested Dollars", f"${saved_ticket_stake_plan['recommended_stake']}")
@@ -6338,7 +7023,7 @@ with tab5:
                         f"Parlay edge estimate: {saved_ticket_stake_plan['parlay_edge'] * 100:.2f}%."
                     )
                 else:
-                    st.caption("Comparison benchmarks are currently available for live saved tickets. Demo tickets are stored for workflow tracking but do not grade against live results.")
+                    st.caption("Comparison benchmarks are currently available for live saved tickets. Demo tickets still help with workflow review, but they do not grade against live results.")
 
 with tab6:
     render_section_header("Backtest", "Review true-results performance, calibration, CLV proxy signals, and profit trends.")
@@ -6563,7 +7248,23 @@ with tab7:
 
     template_df = build_stats_template()
     st.markdown("### CSV Template")
-    st.dataframe(compact_numeric_table(template_df), use_container_width=True)
+    template_display = template_df.copy()
+    if "sport_key" in template_display.columns:
+        template_display["sport_key"] = template_display["sport_key"].map(prettify_sport_key_label)
+    if "market_key" in template_display.columns:
+        template_display["market_key"] = template_display["market_key"].map(prettify_market_label)
+    if "player_name" in template_display.columns and "player" not in template_display.columns:
+        template_display = template_display.rename(columns={"player_name": "player"})
+    template_display = prettify_table_headers(compact_numeric_table(template_display))
+    template_display = template_display.rename(
+        columns={
+            "Season Average": "Season Avg",
+            "Recent Average": "Recent Avg",
+            "Last 5 Average": "Last 5 Avg",
+            "Sample Size": "Sample",
+        }
+    )
+    st.dataframe(template_display, use_container_width=True)
     st.download_button(
         "Download Stats Template CSV",
         data=template_df.to_csv(index=False),
@@ -6591,7 +7292,26 @@ with tab7:
     if imported_stats_df.empty:
         st.caption("No imported stats found yet for the selected sport.")
     else:
-        st.dataframe(compact_numeric_table(imported_stats_df), use_container_width=True)
+        imported_stats_display = imported_stats_df.copy()
+        if "sport_key" in imported_stats_display.columns:
+            imported_stats_display["sport_key"] = imported_stats_display["sport_key"].map(prettify_sport_key_label)
+        market_columns = [col for col in ["market", "market_key"] if col in imported_stats_display.columns]
+        for market_col in market_columns:
+            imported_stats_display[market_col] = imported_stats_display[market_col].map(prettify_market_label)
+        if "player_name" in imported_stats_display.columns and "player" not in imported_stats_display.columns:
+            imported_stats_display = imported_stats_display.rename(columns={"player_name": "player"})
+        imported_stats_display = prettify_table_headers(imported_stats_display)
+        imported_stats_display = imported_stats_display.rename(
+            columns={
+                "sport_key": "Sport",
+                "season_average": "Season Avg",
+                "recent_average": "Recent Avg",
+                "last_5_average": "Last 5 Avg",
+                "sample_size": "Sample",
+                "player": "Player",
+            }
+        )
+        st.dataframe(compact_numeric_table(imported_stats_display), use_container_width=True)
         st.download_button(
             "Export Imported Stats CSV",
             data=imported_stats_df.to_csv(index=False),
