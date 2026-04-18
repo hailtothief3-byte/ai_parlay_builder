@@ -4,6 +4,7 @@ import json
 import base64
 import io
 import zipfile
+from html import escape
 from pathlib import Path
 
 from builders.parlays import ParlaySettings, build_parlay
@@ -201,6 +202,21 @@ def _build_brandmark_data_uri() -> str:
 
 BRANDMARK_DATA_URI = _build_brandmark_data_uri()
 PHASE1_MULTI_SPORT_LABELS = ["NBA", "MLB", "NFL"]
+PARLAY_MARKET_PRESETS = {
+    "Any market": [],
+    "Points": ["player_points", "Points"],
+    "Rebounds": ["player_rebounds", "Rebounds"],
+    "Assists": ["player_assists", "Assists"],
+    "PRA": ["player_points_rebounds_assists", "PRA"],
+    "Hits": ["player_hits", "Hits"],
+    "Total bases": ["player_total_bases", "Total Bases"],
+    "Home runs": ["player_home_runs", "Home Run"],
+    "Pitcher strikeouts": ["player_strikeouts", "Pitcher Strikeouts", "Pitcher Strikeouts"],
+    "Pass yards": ["player_pass_yds"],
+    "Rush yards": ["player_rush_yds"],
+    "Receiving yards": ["player_reception_yds"],
+    "Receptions": ["player_receptions"],
+}
 
 
 def load_nba_exotic_debug() -> dict:
@@ -289,6 +305,7 @@ def select_live_parlay_candidates(
     legs: int,
     allow_same_player: bool,
     balanced_sport_mix: bool = False,
+    min_unique_sports: int = 1,
 ) -> pd.DataFrame:
     if candidates.empty or legs <= 0:
         return candidates.head(0).copy()
@@ -297,15 +314,25 @@ def select_live_parlay_candidates(
     if not allow_same_player and "player" in working.columns:
         working = working.drop_duplicates(subset=["player"], keep="first")
 
-    if not balanced_sport_mix or "sport" not in working.columns:
+    required_unique_sports = max(1, min(int(min_unique_sports or 1), int(legs)))
+    if "sport" not in working.columns:
+        return working.head(0).copy() if required_unique_sports > 1 else working.head(legs).copy()
+
+    ordered_sports = [str(value) for value in working["sport"].dropna().astype(str).tolist() if str(value).strip()]
+    unique_sports_in_order = list(dict.fromkeys(ordered_sports))
+    if len(unique_sports_in_order) < required_unique_sports:
+        return working.head(0).copy()
+
+    if not balanced_sport_mix and required_unique_sports <= 1:
         return working.head(legs).copy()
 
     selected_indices: list[int] = []
+    sport_seed_target = min(len(unique_sports_in_order), legs) if balanced_sport_mix else required_unique_sports
     for _, group in working.groupby("sport", sort=False):
         if group.empty:
             continue
         selected_indices.append(int(group.index[0]))
-        if len(selected_indices) >= legs:
+        if len(selected_indices) >= sport_seed_target:
             break
 
     if len(selected_indices) < legs:
@@ -1965,6 +1992,65 @@ def prettify_market_label(value) -> str:
     if raw in market_map:
         return market_map[raw]
     return raw.replace("_", " ").title()
+
+
+def get_market_preset_matches(available_markets: list[str], preset_label: str) -> list[str]:
+    preset_values = PARLAY_MARKET_PRESETS.get(str(preset_label or "").strip(), [])
+    if not preset_values:
+        return []
+    normalized_values = {str(value).strip().lower() for value in preset_values if str(value).strip()}
+    matches: list[str] = []
+    for market in available_markets:
+        market_text = str(market or "").strip()
+        if not market_text:
+            continue
+        pretty_market = prettify_market_label(market_text).strip().lower()
+        if market_text.lower() in normalized_values or pretty_market in normalized_values:
+            matches.append(market_text)
+    return list(dict.fromkeys(matches))
+
+
+def render_sport_mix_chips(sport_counts: dict[str, int], labels: list[str], title: str = "Included sports in current pool") -> None:
+    tone_map = (
+        {"bg": "#0f172a", "border": "#334155", "text": "#dbe4f0", "muted": "#8ea4bd"}
+        if theme_mode == "Dark"
+        else {"bg": "#f8fafc", "border": "#dbe6f2", "text": "#0f172a", "muted": "#526172"}
+    )
+    chip_markup = "".join(
+        [
+            (
+                f'<span style="display:inline-flex;align-items:center;gap:0.4rem;'
+                f'padding:0.34rem 0.7rem;border-radius:999px;background:{tone_map["bg"]};'
+                f'border:1px solid {tone_map["border"]};color:{tone_map["text"]};font-size:0.84rem;font-weight:700;">'
+                f'{escape(str(label))}<span style="color:{tone_map["muted"]};font-weight:800;">{int(sport_counts.get(label, 0))}</span>'
+                f'</span>'
+            )
+            for label in labels
+        ]
+    )
+    st.markdown(
+        (
+            f'<div style="margin:0.4rem 0 0.7rem;">'
+            f'<div style="font-size:0.83rem;font-weight:700;color:{tone_map["muted"]};margin-bottom:0.45rem;">{escape(title)}</div>'
+            f'<div style="display:flex;flex-wrap:wrap;gap:0.45rem;">{chip_markup}</div>'
+            f'</div>'
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def build_live_ticket_name_template(
+    sport_label: str,
+    parlay_all_sports_pool: bool,
+    sports_included: list[str] | None = None,
+) -> str:
+    if not parlay_all_sports_pool:
+        return f"{sport_label} Live Ticket"
+    current_date_label = pd.Timestamp.now().strftime("%b %d")
+    clean_sports = [str(value).strip() for value in (sports_included or []) if str(value).strip()]
+    unique_sports = list(dict.fromkeys(clean_sports))
+    sports_suffix = " + ".join(unique_sports) if unique_sports else "Multi-Sport"
+    return f"{current_date_label} Live Ticket ({sports_suffix})"
 
 
 def prettify_sport_key_label(value) -> str:
@@ -5057,6 +5143,7 @@ with tab3:
                 key="parlay_live_candidate_pool",
             )
             sport_mix_mode = "Best overall"
+            live_min_unique_sports = 1
             if parlay_all_sports_pool:
                 sport_mix_mode = st.radio(
                     "All-sports mix mode",
@@ -5085,6 +5172,20 @@ with tab3:
             )
             persist_preference_if_changed(sport_label, "live_legs", legs, 3)
             persist_preference_if_changed(sport_label, "live_min_confidence", min_confidence, 65)
+            if parlay_all_sports_pool:
+                min_unique_sports_key = f"parlay_min_unique_sports_{sport_label}"
+                max_unique_sports = min(len(get_phase1_multi_sport_labels()), int(legs))
+                if min_unique_sports_key not in st.session_state:
+                    st.session_state[min_unique_sports_key] = 1
+                if int(st.session_state.get(min_unique_sports_key, 1) or 1) > max_unique_sports:
+                    st.session_state[min_unique_sports_key] = max_unique_sports
+                live_min_unique_sports = st.slider(
+                    "Must include at least this many sports",
+                    min_value=1,
+                    max_value=max_unique_sports,
+                    key=min_unique_sports_key,
+                    help="Use this to force a more mixed ticket when enough sports are available in the current live pool.",
+                )
             allow_same_player = st.checkbox(
                 "Allow multiple picks on the same player",
                 key=live_same_player_session_key,
@@ -5133,10 +5234,10 @@ with tab3:
                 market_control_col1, market_control_col2 = st.columns([1, 2])
                 parlay_quick_market_focus = market_control_col1.selectbox(
                     "Quick market focus",
-                    ["Any market", "Pitcher strikeouts"],
+                    list(PARLAY_MARKET_PRESETS.keys()),
                     index=0,
                     key=f"parlay_quick_market_focus_{sport_label}",
-                    help="Use this to quickly force specific market types in live builds.",
+                    help="Use this to quickly focus the live pool on common market presets.",
                 )
                 available_market_values = (
                     candidates["market"].dropna().astype(str).drop_duplicates().sort_values().tolist()
@@ -5149,21 +5250,28 @@ with tab3:
                     format_func=lambda market: f"{prettify_market_label(market)} ({market})",
                     help="Leave empty for all markets, or pick exact markets to include.",
                 )
-
-                if parlay_quick_market_focus == "Pitcher strikeouts":
-                    strikeout_mask = candidates["market"].astype(str).str.contains("strikeout", case=False, na=False)
-                    candidates = candidates[strikeout_mask].copy()
-
-                if parlay_market_filter_values:
-                    candidates = candidates[candidates["market"].astype(str).isin(parlay_market_filter_values)].copy()
+                preset_market_values = get_market_preset_matches(available_market_values, parlay_quick_market_focus)
+                effective_market_filter_values = list(dict.fromkeys(preset_market_values + parlay_market_filter_values))
+                if effective_market_filter_values:
+                    candidates = candidates[candidates["market"].astype(str).isin(effective_market_filter_values)].copy()
             parlay_market_filter_active = (
                 parlay_quick_market_focus != "Any market" or bool(parlay_market_filter_values)
             )
 
-            if parlay_all_sports_pool and not candidates.empty and "sport" in candidates.columns:
-                sport_counts = candidates["sport"].value_counts()
-                mix_snapshot = ", ".join([f"{sport}: {int(count)}" for sport, count in sport_counts.items()])
-                st.caption(f"Current all-sports candidate mix: {mix_snapshot}")
+            sport_counts: dict[str, int] = {}
+            if parlay_all_sports_pool and "sport" in candidates.columns:
+                sport_counts = {
+                    label: int(
+                        (
+                            candidates["sport"]
+                            .astype(str)
+                            .eq(label)
+                            .sum()
+                        )
+                    )
+                    for label in get_phase1_multi_sport_labels()
+                }
+                render_sport_mix_chips(sport_counts, get_phase1_multi_sport_labels())
 
             st.info(
                 (
@@ -5173,9 +5281,13 @@ with tab3:
                         "Watchlist alert pool is empty right now. Adjust watchlist thresholds or switch back to all live edges."
                         if parlay_candidate_pool == "Watchlist alerts"
                         else (
-                            "No live edges match the current market filter. Clear or widen the market filter to include more options."
+                            "No live edges match the current market focus or filter. Clear or widen the market controls to include more options."
                             if parlay_market_filter_active
-                            else "No live edges currently meet the selected confidence threshold. Lower the threshold or sync new market data."
+                            else (
+                                "Not enough sports are available to satisfy the current mixed-ticket rule. Lower the sports minimum or wait for more live rows."
+                                if parlay_all_sports_pool and live_min_unique_sports > 1 and len([count for count in sport_counts.values() if count > 0]) < live_min_unique_sports
+                                else "No live edges currently meet the selected confidence threshold. Lower the threshold or sync new market data."
+                            )
                         )
                     )
                 )
@@ -5191,18 +5303,33 @@ with tab3:
                 legs=legs,
                 allow_same_player=allow_same_player,
                 balanced_sport_mix=parlay_all_sports_pool and sport_mix_mode == "Balanced by sport",
+                min_unique_sports=live_min_unique_sports,
             )
             if saved_ticket_override_active and saved_ticket_source == "live_edges" and saved_ticket_payload:
                 parlay_df = pd.DataFrame(saved_ticket_payload).copy()
-            default_live_ticket_name = "All Sports Live Ticket" if parlay_all_sports_pool else f"{sport_label} Live Ticket"
+            selected_ticket_sports = (
+                parlay_df["sport"].dropna().astype(str).drop_duplicates().tolist()
+                if not parlay_df.empty and "sport" in parlay_df.columns
+                else [label for label, count in sport_counts.items() if count > 0]
+            )
+            default_live_ticket_name = build_live_ticket_name_template(
+                sport_label=sport_label,
+                parlay_all_sports_pool=parlay_all_sports_pool,
+                sports_included=selected_ticket_sports,
+            )
             current_live_ticket_name = str(st.session_state.get("live_ticket_name", "")).strip()
-            if current_live_ticket_name in {"", "All Sports Live Ticket", f"{sport_label} Live Ticket"}:
+            prior_auto_live_ticket_name = str(st.session_state.get("live_ticket_name_auto_value", "")).strip()
+            if current_live_ticket_name in {"", "All Sports Live Ticket", f"{sport_label} Live Ticket"} or current_live_ticket_name == prior_auto_live_ticket_name:
                 st.session_state["live_ticket_name"] = default_live_ticket_name
+                st.session_state["live_ticket_name_auto_value"] = default_live_ticket_name
             live_ticket_name = st.text_input("Live ticket name", key="live_ticket_name")
             live_ticket_notes = st.text_input("Live ticket notes", key="live_ticket_notes")
 
             if parlay_df.empty or len(parlay_df) < legs:
-                render_empty_state("Not enough live legs", "Loosen the confidence threshold, change the candidate pool, or allow multiple picks on the same player.", tone="warning")
+                shortage_body = "Loosen the confidence threshold, change the candidate pool, or allow multiple picks on the same player."
+                if parlay_all_sports_pool and live_min_unique_sports > 1:
+                    shortage_body = "There are not enough mixed-sport legs to satisfy the current build rule. Lower the minimum sports requirement, widen the market focus, or allow more live candidates."
+                render_empty_state("Not enough live legs", shortage_body, tone="warning")
             else:
                 if saved_ticket_override_active and saved_ticket_source == "live_edges" and saved_ticket_payload:
                     st.caption("Currently loading the selected saved live ticket inside Parlay Lab.")
@@ -5379,8 +5506,14 @@ with tab3:
                                 "candidate_pool": parlay_candidate_pool,
                                 "all_sports_pool": bool(parlay_all_sports_pool),
                                 "all_sports_mix_mode": sport_mix_mode,
+                                "all_sports_min_unique_sports": int(live_min_unique_sports),
                                 "min_confidence": int(min_confidence),
                                 "allow_same_player": bool(allow_same_player),
+                                "style": (
+                                    f"{sport_mix_mode} ({int(live_min_unique_sports)}+ sports)"
+                                    if parlay_all_sports_pool and int(live_min_unique_sports) > 1
+                                    else sport_mix_mode if parlay_all_sports_pool else parlay_candidate_pool
+                                ),
                                 "smart_profile_mode": str(parlay_df.get("smart_profile_mode", pd.Series([""])).iloc[0]) if "smart_profile_mode" in parlay_df.columns and not parlay_df.empty else "",
                                 "dfs_target_key": selected_live_dfs_adapter["key"],
                                 "dfs_target_label": selected_live_dfs_adapter["label"],
@@ -5391,8 +5524,14 @@ with tab3:
                                 "candidate_pool": parlay_candidate_pool,
                                 "all_sports_pool": bool(parlay_all_sports_pool),
                                 "all_sports_mix_mode": sport_mix_mode,
+                                "all_sports_min_unique_sports": int(live_min_unique_sports),
                                 "min_confidence": int(min_confidence),
                                 "allow_same_player": bool(allow_same_player),
+                                "style": (
+                                    f"{sport_mix_mode} ({int(live_min_unique_sports)}+ sports)"
+                                    if parlay_all_sports_pool and int(live_min_unique_sports) > 1
+                                    else sport_mix_mode if parlay_all_sports_pool else parlay_candidate_pool
+                                ),
                                 "smart_profile_mode": str(parlay_df.get("smart_profile_mode", pd.Series([""])).iloc[0]) if "smart_profile_mode" in parlay_df.columns and not parlay_df.empty else "",
                             }
                         ),
